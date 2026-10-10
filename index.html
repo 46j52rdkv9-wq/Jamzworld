@@ -1194,7 +1194,7 @@ function bSolidAt(map, px, py) { return BSOLID.has(tileAt(map, px, py)); }
 function collideMove(map, o, dx, dy) {
   const r = o.r;
   // a ghost player only stops at the map's outer border and story gates
-  const sol = (o === (G && G.p) && G.ghostOn) ? (x, y) => { const t = tileAt(map, x, y); return t === T_GATE || x < TS || y < TS || x > (map.w - 1) * TS || y > (map.h - 1) * TS; } : (x, y) => solidAt(map, x, y);
+  const sol = (o === (G && G.p) && G.ghostOn) ? (x, y) => { const t = tileAt(map, x, y); return t === T_GATE || (!map.world && (x < TS || y < TS || x > (map.w - 1) * TS || y > (map.h - 1) * TS)); } : (x, y) => solidAt(map, x, y);
   const blocked = (x, y) => sol(x - r, y - r) || sol(x + r, y - r) || sol(x - r, y + r) || sol(x + r, y + r);
   let moved = false;
   if (dx) { if (!blocked(o.x + dx, o.y)) { o.x += dx; moved = true; } else { const s = Math.sign(dx); let k = 0; while (k < Math.abs(dx) && !blocked(o.x + s, o.y)) { o.x += s; k++; } } }
@@ -2465,7 +2465,7 @@ function updWorld(dt) {
         }
         else { if (b.rocket) pbExplode(b); else burst(b.x, b.y, 3, '#ccc', 40, .15, 1); b.dead = true; continue; }
       } else { b.x = nx; b.y = ny; }
-      if (b.phase && (b.x < 0 || b.y < 0 || b.x > map.w * TS || b.y > map.h * TS)) b.dead = true;
+      if (b.phase && !map.world && (b.x < 0 || b.y < 0 || b.x > map.w * TS || b.y > map.h * TS)) b.dead = true;
     }
     if (b.trail && R() < b.trail) E.pools.push({ x: b.x, y: b.y, r: 8, life: 1.5, max: 1.5, owner: 'p', dps: b.dmg * 1.2, col: '#ff7043', w: b.w });
     if (b.intercept) for (const eb of E.eb) { if (eb.dead || eb.k === 'mine' || eb.k === 'cookie' || eb.k === 'gear') continue; if (Math.abs(eb.x - b.x) < eb.r + 3 && Math.abs(eb.y - b.y) < eb.r + 3) { eb.dead = true; burst(eb.x, eb.y, 4, '#fff', 40, .2); } }
@@ -3315,7 +3315,7 @@ function openMap() {
   };
 }
 function openTravel() {
-  const list = Object.keys(AREAS).filter(k => G.stones[k]);
+  const list = Object.keys(AREAS).filter(k => G.stones[k] && AREAS[k].stone);
   SCREEN = menuList('TIDE STONE - WARP TO', [...list.map(k => ({ t: AREAS[k].name + (k === G.area ? ' (here)' : ''), dis: k === G.area, f: () => { SCREEN = null; if (leaveGuard('warp:' + k, false)) return; const s = AREAS[k].stone; goArea(k, s[0] * TS + 8, s[1] * TS + 26); } })), { t: 'Cancel', f: () => SCREEN = null }], { w: 250 });
 }
 // ---------- bounty board ----------
@@ -3423,7 +3423,7 @@ function deserialize(s) {
   for (const id of G.p.stash) G.codex[id] = 1;
   for (const id of [...G.p.slots, ...G.p.pack]) if (id >= 0) G.codex[id] = 1;
   initRuntime(G.p);
-  const area = AREAS[o.area] ? o.area : 'town';
+  const area = (AREAS[o.area] || o.area === 'world') ? o.area : 'town';
   ST = 'play'; SCREEN = null; DLG.on = false;
   goArea(area, o.x || null, o.y || null, true);
   toast('Game loaded!', '#7cff7c'); pktArm();
@@ -3696,7 +3696,7 @@ function promptText(it) {
 function doInteract(it) {
   const P = G.p;
   if (it.type === 'chest') {
-    const c = it.c; c.open = true; G.chestT[G.area + ':' + c.i] = G.time; G.stats.chests++;
+    const c = it.c; c.open = true; G.chestT[c.id || (G.area + ':' + c.i)] = G.time; G.stats.chests++;
     const kd = c.kind || 0, cd = CHESTS[kd];
     AU.sfx(kd >= 3 ? 'rare' : 'chest'); burst(c.x * TS + 8, c.y * TS + 8, 16 + kd * 10, [cd.lid, cd.trim, '#fff'], 60 + kd * 20);
     const t = curTier();
@@ -4069,7 +4069,7 @@ function drawTitleUI() {
       ctx.fillStyle = '#070b18'; ctx.fillRect(-21, -7, 44, 16);
       ctx.fillStyle = '#35e0c8'; ctx.fillRect(-22, -8, 44, 16);
       ctx.fillStyle = '#b4fff2'; ctx.fillRect(-22, -8, 44, 2);
-      txt('v1.4', 0, -3.5, '#070b18', 8, 'center', F1, null);
+      txt('v2.0', 0, -3.5, '#070b18', 8, 'center', F1, null);
       ctx.restore();
     }
     ctx.globalAlpha = 1;
@@ -4107,7 +4107,7 @@ function drawTitleUI() {
     txt(o.t, mxp + 22, iy, on ? '#fff4dc' : (o.c || '#9fb0d0'));
   });
   t2('ARROWS select   ENTER confirm', W / 2, H - 15, '#7d8db0', 'center', 11);
-  t2('v1.4', W - 6, H - 15, '#4a5470', 'right', 11);
+  t2('v2.0', W - 6, H - 15, '#4a5470', 'right', 11);
   ctx.globalAlpha = 1;
 }
 let INTRO = null;
@@ -4383,7 +4383,7 @@ function drawWorld(info) {
   const V = camView(sx, sy);
   const cx = V.ox, cy = V.oy; // world position of the layer canvases' top-left corner
   // weather
-  const wkey = (ARENA ? ARENA.key : G.area);
+  const wkey = (ARENA ? ARENA.key : G.area) + (map.world ? ':' + (info.look.weather || '') : '');
   if (WXAREA !== wkey) { WXAREA = wkey; wxReset(info.look.weather); WXCAM = null; }
   if (WXCAM) wxUpdate(FRAME_DT, cx - WXCAM[0], cy - WXCAM[1]); else wxUpdate(FRAME_DT, 0, 0);
   WXCAM = [cx, cy];
@@ -4393,7 +4393,8 @@ function drawWorld(info) {
   CTX_W.setTransform(1, 0, 0, 1, -cx, -cy); CTX_E.setTransform(1, 0, 0, 1, -cx, -cy);
   ctx = CTX_W;
   const sx0 = Math.max(0, cx), sy0 = Math.max(0, cy), sw = Math.min(WP, mw - sx0), sh = Math.min(HP, mh - sy0);
-  if (sw > 0 && sh > 0) {
+  if (map.world) wDrawGround(cx, cy, info);
+  else if (sw > 0 && sh > 0) {
     CTX_W.drawImage(map.canvas, sx0, sy0, sw, sh, sx0, sy0, sw, sh);
     CTX_E.drawImage(map.emi, sx0, sy0, sw, sh, sx0, sy0, sw, sh);
     if (map.emiN && info.night > .02) { CTX_E.globalAlpha = info.night; CTX_E.drawImage(map.emiN, sx0, sy0, sw, sh, sx0, sy0, sw, sh); CTX_E.globalAlpha = 1; }
@@ -4424,6 +4425,7 @@ function drawWorld(info) {
   const fol = followerDrawItem(); if (fol) D.push(fol);
   for (const it of townRecItems(info)) D.push(it);
   for (const it of deathDrawItems()) D.push(it);
+  if (map.world) for (const it of wDrawItems(cx, cy)) D.push(it);
   D.sort((a, b) => a.y - b.y).forEach(d => d.f());
   updDrawCritters(map, cx, cy, 0, 1);
   drawTownSky(info); drawTownBark();
@@ -4804,7 +4806,7 @@ float fbm(vec2 p){ float v=0., a=.5; for(int i=0;i<FBM;i++){ v+=a*vnoise(p); p*=
 float lum(vec3 c){ return dot(c, vec3(.299,.587,.114)); }`;
     const FS_LIGHT = defs + lib + `
 uniform sampler2D uScene, uEmi, uMask;
-uniform vec2 uRes, uCam, uMaskSize, uOut, uTexSize, uTexC;
+uniform vec2 uRes, uCam, uMaskSize, uOut, uTexSize, uTexC, uMaskOrg;
 uniform float uZoom;
 uniform float uTime, uCloud, uShaft, uHeat, uBump, uHorizon, uEmiK;
 uniform vec3 uAmb, uShaftCol;
@@ -4812,10 +4814,10 @@ uniform vec4 uFog;
 uniform vec4 uL[NL*2];
 uniform int uNL, uNS;
 uniform vec4 uShock[4];
-vec4 maskAt(vec2 w){ return texture2D(uMask, (floor(w/16.)+.5)/uMaskSize); }
+vec4 maskAt(vec2 w){ return texture2D(uMask, (floor(w/16.)-uMaskOrg+.5)/uMaskSize); }
 float shadowAt(vec2 p, vec2 lp){
   vec2 own = floor(p/16.); vec2 d = (lp-p)/12.; vec2 q = p; float s = 1.;
-  for (int k=0;k<12;k++){ q += d; vec2 t = floor(q/16.); if (t.x!=own.x || t.y!=own.y) s -= texture2D(uMask,(t+.5)/uMaskSize).r*.3; }
+  for (int k=0;k<12;k++){ q += d; vec2 t = floor(q/16.); if (t.x!=own.x || t.y!=own.y) s -= texture2D(uMask,(t-uMaskOrg+.5)/uMaskSize).r*.3; }
   return clamp(s,.12,1.);
 }
 void main(){
@@ -4947,11 +4949,13 @@ void main(){
   },
   setMask(map) {
     const gl = this.gl;
-    const key = map ? map.key + ':' + (map.maskVer || 0) : 'none';
+    const key = map ? (map.world ? wMaskKey() : map.key + ':' + (map.maskVer || 0)) : 'none';
     if (key === this.maskKey) return;
     this.maskKey = key;
     gl.bindTexture(gl.TEXTURE_2D, this.maskTex);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    this.maskOrg = [0, 0];
+    if (map && map.world) { const MK = wBuildMask(); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, MK.w, MK.h, 0, gl.RGBA, gl.UNSIGNED_BYTE, MK.d); this.maskSize = [MK.w, MK.h]; this.maskOrg = [MK.x0, MK.y0]; return; }
     if (!map) { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); this.maskSize = [1, 1]; return; }
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, map.w, map.h, 0, gl.RGBA, gl.UNSIGNED_BYTE, buildMask(map));
     this.maskSize = [map.w, map.h];
@@ -5117,7 +5121,7 @@ function gfxRender(mode, cx, cy, info) {
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, GFX.tScene); gl.uniform1i(u.uScene, 0);
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, GFX.tEmi); gl.uniform1i(u.uEmi, 1);
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, GFX.maskTex); gl.uniform1i(u.uMask, 2);
-    gl.uniform2f(u.uRes, W, H); gl.uniform2f(u.uOut, F.lit.w, F.lit.h); gl.uniform2f(u.uCam, V.ox, V.oy); gl.uniform2f(u.uTexSize, WP, HP); gl.uniform2f(u.uTexC, V.tcx, V.tcy); gl.uniform1f(u.uZoom, V.z); gl.uniform2f(u.uMaskSize, GFX.maskSize[0], GFX.maskSize[1]);
+    gl.uniform2f(u.uRes, W, H); gl.uniform2f(u.uOut, F.lit.w, F.lit.h); gl.uniform2f(u.uCam, V.ox, V.oy); gl.uniform2f(u.uTexSize, WP, HP); gl.uniform2f(u.uTexC, V.tcx, V.tcy); gl.uniform1f(u.uZoom, V.z); gl.uniform2f(u.uMaskSize, GFX.maskSize[0], GFX.maskSize[1]); gl.uniform2f(u.uMaskOrg, (GFX.maskOrg || [0, 0])[0], (GFX.maskOrg || [0, 0])[1]);
     gl.uniform1f(u.uTime, _gt % 1000);
     const amb = info.amb.map(v => v + GFX.lightning * .9);
     gl.uniform3f(u.uAmb, amb[0], amb[1], amb[2]);
@@ -6166,8 +6170,10 @@ function camUpdate(map) {
   const kf = f ? 1 - Math.exp(-dt * 9) : .15;
   CAMS.cx = lerp(CAMS.cx, tx, kf); CAMS.cy = lerp(CAMS.cy, ty, kf);
   const z = CAMS.z, hw = W / (2 * z), hh = H / (2 * z);
-  CAMS.cx = mw <= hw * 2 ? mw / 2 : clamp(CAMS.cx, hw, mw - hw);
-  CAMS.cy = mh <= hh * 2 ? mh / 2 : clamp(CAMS.cy, hh, mh - hh);
+  if (!map.world) {
+    CAMS.cx = mw <= hw * 2 ? mw / 2 : clamp(CAMS.cx, hw, mw - hw);
+    CAMS.cy = mh <= hh * 2 ? mh / 2 : clamp(CAMS.cy, hh, mh - hh);
+  }
   cam.x = CAMS.cx - W / 2; cam.y = CAMS.cy - H / 2; // legacy top-left (gameplay uses it)
 }
 // build the view for this frame (shake included); returns the texture origin in world space
@@ -6434,7 +6440,7 @@ function drawTownBack(info) {
 // y-sorted items (stalls, statue, lanterns, bunting) that you can walk in front of and behind
 function townRecItems(info) {
   if (!inTown()) return [];
-  const st = townStage(), map = G.map, spots = recSpots(map), out = [];
+  const st = townStage(), map = TOWNMAP(), spots = recSpots(map), out = [];
   REC_FEATS.forEach((f, i) => {
     if (f.s > st) return;
     if (f.k === 'stall') { const [x, y] = spots[i]; out.push({ y: y * TS + 14, f: () => recStall(x, y, f.kind, _gt) }); }
@@ -6448,7 +6454,7 @@ function townRecItems(info) {
 function drawTownSky(info) {
   if (!inTown()) return;
   const st = townStage();
-  if (st >= 2) recGulls(_gt, G.map);
+  if (st >= 2) recGulls(_gt, TOWNMAP());
   if (st >= 7) recFireworks(info.night || 0, FRAME_DT || .016);
 }
 // extra light sources for the GL renderer
@@ -6456,7 +6462,7 @@ function townRecLights(info) {
   if (!inTown()) return;
   const st = townStage(), night = info.night || 0;
   if (st >= 6 && night > .1) for (const lx of LANTERN_X) pushL(lx * TS + 12, 28 * TS - 6, 46, [1, .62, .3], .9 * night, 14, 0, 5);
-  if (st >= 7) { const sp = recSpots(G.map), i = REC_FEATS.findIndex(f => f.k === 'statue'); if (sp[i]) pushL(sp[i][0] * TS + 16, sp[i][1] * TS - 10, 50, [1, .85, .5], .5 + night * .6, 30, 0, 6); }
+  if (st >= 7) { const sp = recSpots(TOWNMAP()), i = REC_FEATS.findIndex(f => f.k === 'statue'); if (sp[i]) pushL(sp[i][0] * TS + 16, sp[i][1] * TS - 10, 50, [1, .85, .5], .5 + night * .6, 30, 0, 6); }
 }
 // ---------- what people say ----------
 const REACT = {
@@ -7303,7 +7309,7 @@ Object.assign(AI, {
       e.alpha = 0; e.inv = .2;
       // drift unseen to a spot at the edge of your light
       const ta = Math.atan2(e.y - P.y, e.x - P.x) + dt * .8, rr = 110;
-      const tx = clamp(P.x + Math.cos(ta) * rr, 2 * TS, (G.map.w - 2) * TS), ty = clamp(P.y + Math.sin(ta) * rr, 3 * TS, (G.map.h - 3) * TS);
+      const tx = G.map.world ? P.x + Math.cos(ta) * rr : clamp(P.x + Math.cos(ta) * rr, 2 * TS, (G.map.w - 2) * TS), ty = G.map.world ? P.y + Math.sin(ta) * rr : clamp(P.y + Math.sin(ta) * rr, 3 * TS, (G.map.h - 3) * TS);
       e.x = lerp(e.x, tx, Math.min(1, dt * 2.5)); e.y = lerp(e.y, ty, Math.min(1, dt * 2.5));
       if (e.lt <= 0) {
         const r = R();
@@ -7731,7 +7737,7 @@ function drawSpellCard(s, x, y, wd = 220) {
 }
 
 // ================= STORY v2: bar folk, clues, events, lovers, the Forbidden Folio, ghost, pkt =================
-const VERSION = 'v1.4';
+const VERSION = 'v2.0';
 Object.assign(QDEF, {
   spellbook: { name: 'The Unwise Wizard', giver: 'Mortimer', need: 3, desc: 'Recover Mortimer\'s 3 stolen spell pages from bandit camps in the Dustbowl Flats.' },
   lovers: { name: 'Star-Crossed', giver: 'Juliet', need: 1, desc: 'Bring the one you spared first across the marsh to the other.' },
@@ -9925,7 +9931,7 @@ drawTownBack = (function (f0) {
   return function (info) {
     f0(info);
     if (!inTown()) return;
-    const R_ = ruinPlan(G.map), st = townStage();
+    const R_ = ruinPlan(TOWNMAP()), st = townStage();
     if (st >= 7) return;
     for (const r of R_.roofs) {
       if (r.k > .34 || !ruinOn(r.k / .34)) continue; // about a third of roof tiles took damage
@@ -9972,7 +9978,7 @@ townRecItems = (function (f0) {
   return function (info) {
     const out = f0(info);
     if (!inTown()) return out;
-    const R_ = ruinPlan(G.map), st = townStage();
+    const R_ = ruinPlan(TOWNMAP()), st = townStage();
     if (st >= 7) return out;
     R_.rubble.forEach((r, i) => { if (st <= Math.floor(i / 16 * 6.9)) out.push({ y: r.y * TS + 12, f: () => drawRubble(r, st) }); });
     return out;
@@ -9987,7 +9993,7 @@ updTownBarks = (function (f0) {
     const st = townStage(); if (st >= 3) return;
     RUIN_SMOKE -= dt; if (RUIN_SMOKE > 0) return;
     RUIN_SMOKE = st === 0 ? .06 : .16;
-    const R_ = ruinPlan(G.map), srcs = R_.roofs.filter(r => r.hole && ruinOn(r.k));
+    const R_ = ruinPlan(TOWNMAP()), srcs = R_.roofs.filter(r => r.hole && ruinOn(r.k));
     if (!srcs.length) return;
     const s = pick(srcs);
     part(s.x * TS + 8 + rand(-3, 3), s.y * TS + 6, rand(-3, 6), -rand(12, 22), 2.6, pick(['#3a3430', '#4a4440', '#5a524c']), 3);
@@ -9998,7 +10004,7 @@ townRecLights = (function (f0) {
   return function (info) {
     f0(info);
     if (!inTown() || townStage() > 0) return;
-    for (const r of ruinPlan(G.map).rubble) if (r.fire) pushL(r.x * TS + 8, r.y * TS + 2, 50, [1, .55, .2], .9 * (.85 + .15 * Math.sin(_gt * 11 + r.x)), 12, 1, 10);
+    for (const r of ruinPlan(TOWNMAP()).rubble) if (r.fire) pushL(r.x * TS + 8, r.y * TS + 2, 50, [1, .55, .2], .9 * (.85 + .15 * Math.sin(_gt * 11 + r.x)), 12, 1, 10);
   };
 })(townRecLights);
 
@@ -11847,7 +11853,353 @@ const EDITS2 = {
 };
 applyEdits = function (A) { const U = editKit(A); if (EDITS[A.key]) EDITS[A.key](A, U); if (EDITS2[A.key]) EDITS2[A.key](A, U); return A; };
 
-  return { paintArea, composeArea, applyEdits, NS, NSV, TSTYLE };
+// ================= v2.0 ENDLESS WORLD: a new set of trees, rocks and plants for every biome =================
+// Same brush engine as everything else (short directional strokes, blue-violet shadows, prussian outline).
+// None of the old sprites are reused out in the wilds: every biome gets its own.
+const WB_ = {
+  canopy(S, blobs, col, warm, o = {}) { S.part(M.or(...blobs.map(b => M.ell(b[0], b[1], b[2], b[3]))), ramp(col, warm || '#fff0a0'), o.flow || 'curl', Object.assign({ dens: 1, len: 3, jit: .8 }, o)); },
+  trunk(S, x, y0, y1, w, col) { S.part(M.fn((px, py) => py >= y0 && py <= y1 && Math.abs(px + .5 - x) <= w / 2 + (py > y1 - 3 ? (py - (y1 - 3)) * .6 : 0)), ramp(col), 'v', { dens: .9 }); },
+  branch(S, x0, y0, x1, y1, c) { line(x0, y0, x1, y1, (x, y) => { S.px(x, y, c); }); },
+  tiers(S, cx, top, n, w0, dw, th, col, warm, snow) {
+    for (let k = n - 1; k >= 0; k--) { const y = top + k * th, hw = w0 + k * dw; S.part(M.fn((x, yy) => yy >= y && yy < y + th + 4 && Math.abs(x + .5 - cx) < hw * ((yy - y + 1) / (th + 4)) + 1), ramp(col, warm), (x) => x < cx ? 2.3 : .8, { dens: 1, len: 3, jit: .6 }); }
+    if (snow) for (let k = 0; k < n; k++) { const y = top + k * th; S.part(M.fn((x, yy) => yy >= y + 1 && yy < y + 4 && Math.abs(x + .5 - cx) < (w0 + k * dw) * ((yy - y + 1) / (th + 4)) + .5), ramp('#e8f0ff', '#ffffff'), 'h', { dabs: 0 }); }
+  },
+  rockBlob(S, cx, cy, rx, ry, col, o = {}) { S.part(M.ell(cx, cy, rx, ry), ramp(col, o.warm), 'contour', { dens: .9 }); if (o.cap) S.part(M.and(M.ell(cx, cy, rx, ry), (x, y) => y < cy - ry * .25 + Math.sin(x * .9) * .8), ramp(o.cap, '#ffffff'), o.capFlow || 'h', { dabs: 0 }); },
+  stems(S, n, x0, x1, base, h, cols, o = {}) { const r = S.r; for (let i = 0; i < n; i++) { const x = x0 + (x1 - x0) * (i + r() * .6) / n, a = -Math.PI / 2 + (r() - .5) * (o.spread || .5); brush(S, x, base, a, Math.round(h * (.6 + r() * .4)), (r() - .5) * .06, cols, .5); } },
+};
+Object.assign(MOBJ, {
+  // ---------------- Wildflower Meadows ----------------
+  'Meadow oak': P_(42, 46, 901, S => { WB_.trunk(S, 21, 26, 45, 5, '#6a4a32'); WB_.branch(S, 21, 30, 12, 22, '#5a3e2a'); WB_.branch(S, 21, 29, 31, 21, '#5a3e2a'); WB_.canopy(S, [[12, 18, 10, 8], [30, 17, 10, 8], [21, 11, 12, 9], [21, 22, 13, 6]], '#3e8a3a', '#e8e070'); for (let i = 0; i < 9; i++) S.px(6 + Math.floor(S.r() * 30), 6 + Math.floor(S.r() * 18), '#f2e070'); }),
+  'Meadow birch': P_(30, 48, 902, S => { S.part(M.rect(13, 20, 4, 28), ['#8a8a94', '#c8c8d0', '#e8e8ee', '#f8f8fc', '#ffffff'], 'v', { dens: .7 }); for (let y = 22; y < 46; y += 3) S.rect(13 + (y % 2), y, 2, 1, '#2a2a34'); WB_.canopy(S, [[15, 13, 11, 10], [9, 20, 6, 5], [22, 19, 6, 5]], '#7ab04a', '#f8f0a0', { flow: 'swirl' }); }),
+  'Lichen boulder': P_(24, 18, 903, S => { WB_.rockBlob(S, 12, 10, 11, 7.5, '#8a8a9a'); for (let i = 0; i < 14; i++) { const x = 4 + Math.floor(S.r() * 16), y = 4 + Math.floor(S.r() * 8); if (S.on(x, y)) S.px(x, y, S.r() < .5 ? '#c8c84a' : '#9ab84a'); } }),
+  'Hedge bush': P_(22, 16, 904, S => { WB_.canopy(S, [[7, 10, 6, 5], [15, 9, 6.5, 6], [11, 6, 6, 4.5]], '#2e6a32', '#c8e070'); for (const [x, y] of [[6, 7], [14, 5], [17, 10], [9, 11]]) S.px(x, y, '#f0f0f0'); }),
+  'Clover patch': P_(18, 8, 905, S => { for (let i = 0; i < 9; i++) { const x = 2 + Math.floor(S.r() * 14), y = 2 + Math.floor(S.r() * 4); S.part(M.ell(x, y, 1.8, 1.4), ramp('#4a9a3a'), 'swirl', { dabs: 0 }); } S.px(5, 2, '#ffffff'); S.px(12, 3, '#e8a0c0'); }),
+  'Poppy tuft': () => { const S = grassClump(16, 14, 906, { n: 9, len: 9 }); for (const [x, y] of [[4, 3], [10, 2], [7, 5], [12, 6]]) { S.part(M.ell(x, y, 1.8, 1.5), ramp('#e8302a'), 'swirl', { dabs: 0 }); S.px(x, y, '#1a1a2e'); } return S; },
+  'Daisy tuft': () => { const S = grassClump(16, 14, 907, { n: 9, len: 8 }); for (const [x, y] of [[4, 4], [10, 3], [12, 7]]) { for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) S.px(x + dx, y + dy, '#ffffff'); S.px(x, y, '#f2c230'); } return S; },
+  'Wheat tuft': P_(14, 18, 908, S => { for (let i = 0; i < 6; i++) { const x = 2 + i * 2, top = 3 + (i % 3); line(x, 17, x + (i - 2.5) * .5, top + 3, (px, py) => S.px(px, py, '#b8a040')); S.part(M.ell(x + (i - 2.5) * .5, top + 1, 1.1, 2.4), ramp('#e8c040'), 'v', { dabs: .3 }); } }),
+  // ---------------- The Pine Wilds ----------------
+  'Spruce tall': P_(28, 56, 911, S => { WB_.trunk(S, 14, 46, 55, 3, '#4a3020'); WB_.tiers(S, 14, 2, 6, 3, 2.2, 8, '#1e4a3a', '#a8d080'); }),
+  'Spruce small': P_(20, 38, 912, S => { WB_.trunk(S, 10, 31, 37, 2, '#4a3020'); WB_.tiers(S, 10, 2, 4, 2.5, 2, 7, '#2a5a3a', '#c8e08a'); }),
+  'Fir': P_(26, 46, 913, S => { WB_.trunk(S, 13, 38, 45, 3, '#5a3a24'); S.part(M.fn((x, y) => y > 1 && y < 41 && Math.abs(x + .5 - 13) < (y - 1) * .3 + 1 + Math.sin(y * .9) * 1.4), ramp('#24543e', '#b8d890'), (x) => x < 13 ? 2.4 : .7, { dens: 1, len: 3, jit: .7 }); }),
+  'Fallen log': P_(30, 12, 914, S => { S.part(M.rect(2, 3, 24, 7), ramp('#6a4a2e'), 'h', { dens: .9 }); S.part(M.ell(26, 6.5, 2.6, 3.6), ramp('#d8b07a'), 'swirl'); S.px(26, 6, '#8a6a3a'); for (let x = 4; x < 24; x += 3) S.px(x, 3, '#5a9a3a'); S.part(M.ell(10, 3, 3, 1.2), ramp('#4a8a3a'), 'h', { dabs: 0 }); }),
+  'Mossy stump': P_(18, 16, 915, S => { S.part(M.fn((x, y) => y >= 5 && y < 15 && Math.abs(x + .5 - 9) < 5 + (y > 12 ? (y - 12) : 0)), ramp('#6a4a2e'), 'v'); S.part(M.ell(9, 5, 5, 2), ramp('#c8a070'), 'swirl'); S.part(M.and(M.ell(9, 9, 6, 5), (x, y) => (x + y) % 3 === 0 && y > 6), ramp('#4a8a3a'), 'h', { dabs: 0 }); }),
+  'Bracken': () => { const S = new Sprite(22, 16, 916), r = S.r; for (let i = -4; i <= 4; i++) { const a = -Math.PI / 2 + i * .3; let x = 11, y = 15; for (let s = 0; s < 11 - Math.abs(i); s++) { x += Math.cos(a + s * .04 * Math.sign(i || 1)); y += Math.sin(a + s * .04 * Math.sign(i || 1)); S.px(x, y, '#3a6a2a'); if (s % 2 === 0) { S.px(x - 1, y + 1, '#5a9a3a'); S.px(x + 1, y + 1, '#7ab04a'); } } } return S.outline(); },
+  'Forest mushrooms': P_(16, 12, 917, S => { for (const [x, h, c] of [[4, 6, '#c8783a'], [9, 8, '#a85a2a'], [13, 5, '#d8a060']]) { S.rect(x, 12 - h, 2, h - 2, '#ece4d0'); S.part(M.and(M.ell(x + 1, 12 - h, 3, 2.4), (px, py) => py <= 12 - h), ramp(c), 'radial'); } }),
+  'Bluebells': () => { const S = grassClump(16, 14, 918, { n: 8, len: 9 }); for (let i = 0; i < 7; i++) { const x = 2 + Math.floor(S.r() * 12), y = 1 + Math.floor(S.r() * 6); S.px(x, y, '#5a6ae8'); S.px(x, y + 1, '#3a4ab8'); } return S; },
+  // ---------------- The Sun-Bleached Dunes ----------------
+  'Joshua tree': P_(32, 42, 921, S => { const c = '#7a6a4a'; WB_.trunk(S, 16, 22, 41, 4, c); WB_.branch(S, 16, 26, 8, 16, c); WB_.branch(S, 17, 25, 9, 15, c); WB_.branch(S, 16, 24, 25, 12, c); WB_.branch(S, 17, 23, 26, 11, c); WB_.branch(S, 16, 22, 17, 8, c); for (const [x, y] of [[8, 14], [25, 10], [17, 6]]) S.part(M.ell(x, y, 4, 4), ramp('#6a8a4a', '#e0e0a0'), 'radial', { dens: 1, len: 3 }); }),
+  'Dune rock': P_(28, 20, 922, S => { WB_.rockBlob(S, 14, 12, 13, 7.5, '#d0985a', { warm: '#fff0c0' }); S.part(M.and(M.ell(14, 12, 13, 7.5), (x, y) => y > 14), ramp('#e8b878'), 'h', { dabs: 0 }); for (let x = 4; x < 25; x += 4) S.px(x, 11 + (x % 3), '#9a6a3a'); }),
+  'Saguaro tall': P_(18, 38, 923, S => { S.part(M.or(M.fn((x, y) => y > 2 && y < 38 && Math.abs(x + .5 - 9) < 2.8), M.rect(2, 14, 3, 10), M.rect(2, 22, 6, 3), M.rect(13, 10, 3, 9), M.rect(10, 17, 6, 3)), ramp('#3e8a4a', '#d8f0a0'), 'v', { dens: .9 }); for (let y = 5; y < 36; y += 3) S.px(9, y, '#9ac87a'); S.px(9, 2, '#f05a8a'); S.px(3, 13, '#f2c230'); }),
+  'Saguaro twin': P_(24, 32, 924, S => { S.part(M.or(M.fn((x, y) => y > 4 && y < 32 && Math.abs(x + .5 - 8) < 2.6), M.fn((x, y) => y > 10 && y < 32 && Math.abs(x + .5 - 16) < 2.4), M.rect(1, 13, 3, 8), M.rect(1, 19, 6, 3), M.rect(20, 15, 3, 7), M.rect(17, 20, 5, 3)), ramp('#4a8a3a', '#d8f0a0'), 'v', { dens: .9 }); S.px(8, 4, '#f2c230'); }),
+  'Globe cactus': P_(14, 14, 925, S => { S.part(M.ell(7, 8, 6, 5.5), ramp('#4a8a5a'), 'v', { dens: 1 }); for (let x = 2; x < 13; x += 2) line(x, 4, 7 + (x - 7) * 1.2, 13, (px, py) => { if (S.on(px, py)) S.px(px, py, '#2a5a3a'); }); S.part(M.ell(7, 3, 2.4, 1.6), ramp('#e85a9a'), 'radial'); }),
+  'Desert grass': () => grassClump(18, 14, 926, { pal: [['#8a6a2a', '#b8903a'], ['#b8903a', '#d8b860', '#f0d890'], ['#c8a050', '#e8c870', '#fff0b0'], ['#8a7a9a', '#b0a0c0']], spread: 2.4, base: 8 }),
+  'Bleached ribs': P_(20, 12, 927, S => { for (let i = 0; i < 5; i++) { const x = 3 + i * 3.5; line(x, 10, x - 1 + i * .3, 3, (px, py) => S.px(px, py, '#ece4d0')); } line(1, 10, 19, 9, (px, py) => S.px(px, py, '#d8d0bc')); }),
+  'Desert sage': () => { const S = new Sprite(18, 14, 928), r = S.r; for (let i = 0; i < 13; i++) { const a = -Math.PI / 2 + (i - 6) * .2 + (r() - .5) * .2; const [ex, ey] = brush(S, 9 + (r() - .5) * 5, 13, a, 6 + Math.floor(r() * 5), (i - 6) * .02, ['#4a6a4a', '#7a9a6a', '#a8c08a'], .6); if (i % 3 === 0) { S.px(ex, ey, '#b88ae8'); S.px(ex, ey - 1, '#d8b8ff'); } } return S.outline(); },
+  // ---------------- Redrock Badlands ----------------
+  'Hoodoo': P_(20, 44, 931, S => { const bands = ['#b8582a', '#d8783a', '#a84a2a', '#e09050']; S.part(M.fn((x, y) => y > 8 && y < 44 && Math.abs(x + .5 - 10) < 3.4 + Math.sin(y * .45) * 1.2 + (y > 36 ? (y - 36) * .5 : 0)), ramp('#c0602e', '#ffd8a0'), 'h', { dens: .9 }); for (let y = 12; y < 42; y += 5) S.part(M.and(M.fn((x, yy) => S.on(x, yy)), (x, yy) => yy === y || yy === y + 1), ramp(bands[(y / 5 | 0) % 4]), 'h', { dabs: 0 }); S.part(M.ell(10, 7, 6.5, 4), ramp('#8a5a3a', '#e8c8a0'), 'contour'); }),
+  'Red boulder': P_(26, 20, 932, S => { WB_.rockBlob(S, 13, 11, 12, 8, '#b85a32', { warm: '#ffd0a0' }); for (let y = 6; y < 18; y += 3) for (let x = 2; x < 24; x++) if (S.on(x, y) && S.r() < .7) S.px(x, y, '#8a3a22'); }),
+  'Mesquite': P_(34, 32, 933, S => { WB_.trunk(S, 17, 18, 31, 3, '#5a3a2a'); WB_.branch(S, 17, 20, 7, 12, '#4a3020'); WB_.branch(S, 17, 19, 28, 11, '#4a3020'); WB_.canopy(S, [[8, 11, 7, 5], [26, 10, 7, 5], [17, 8, 9, 6]], '#6a8a3a', '#e8e090', { dens: .7 }); }),
+  'Agave': () => { const S = new Sprite(20, 16, 934); for (let i = 0; i < 9; i++) { const a = -Math.PI / 2 + (i - 4) * .36; brush(S, 10, 15, a, 8 + (4 - Math.abs(i - 4)) * 1.3, (i - 4) * .02, ['#3a6a6a', '#5a8a8a', '#8ab0a8', '#c8d8c0'], .7); } return S.outline(); },
+  'Red scrub': P_(18, 10, 935, S => { WB_.canopy(S, [[6, 6, 5, 3.5], [12, 5, 5, 4]], '#8a5a3a', '#e8b080', { flow: 'swirl', dens: .8 }); }),
+  'Steer skull': P_(18, 10, 936, S => { S.part(M.ell(9, 6, 3.4, 3.2), ramp('#ece4d0'), 'contour'); line(6, 4, 1, 1, (x, y) => { S.px(x, y, '#e0d8c4'); S.px(x, y + 1, '#c8c0a8'); }); line(12, 4, 17, 1, (x, y) => { S.px(x, y, '#e0d8c4'); S.px(x, y + 1, '#c8c0a8'); }); S.px(8, 6, '#2a1a1a'); S.px(10, 6, '#2a1a1a'); }),
+  // ---------------- The Drowned Fens ----------------
+  'Swamp cypress': P_(32, 52, 941, S => { S.part(M.fn((x, y) => y > 26 && y < 51 && Math.abs(x + .5 - 16) < 2.5 + Math.max(0, y - 40) * .7), ramp('#5a4a3a'), 'v'); for (const dx of [-7, -4, 4, 7]) WB_.branch(S, 16 + dx * .4, 46, 16 + dx, 51, '#4a3a2a'); WB_.canopy(S, [[16, 12, 12, 9], [9, 22, 7, 5], [23, 21, 7, 5]], '#3a5a3a', '#c8d890'); for (let x = 5; x < 28; x += 3) line(x, 18, x + (S.r() - .5), 28 + S.r() * 6, (px, py) => S.px(px, py, '#8a9a7a')); }),
+  'Mangrove': P_(36, 38, 942, S => { for (const [x0, x1] of [[18, 6], [18, 12], [18, 24], [18, 30], [17, 18]]) { line(x0, 22, x1, 37, (x, y) => { S.px(x, y, '#5a4a32'); S.px(x + 1, y, '#3a2e20'); }); } WB_.canopy(S, [[10, 13, 9, 7], [26, 12, 9, 7], [18, 9, 10, 7]], '#2e5a32', '#b8d880'); }),
+  'Bog stump': P_(18, 16, 943, S => { S.part(M.fn((x, y) => y >= 3 && y < 15 && Math.abs(x + .5 - 9) < 4 + (y > 11 ? (y - 11) * .9 : 0) - (y < 6 ? (6 - y) * .4 : 0)), ramp('#4a3a2a'), 'v'); for (let k = 0; k < 6; k++) S.px(5 + Math.floor(S.r() * 8), 6 + Math.floor(S.r() * 7), '#5a8a4a'); S.part(M.ell(12, 6, 2, 1.4), ramp('#c8c060'), 'radial', { dabs: 0 }); }),
+  'Cattail clump': () => { const S = new Sprite(16, 24, 944), r = S.r; for (let i = 0; i < 6; i++) { const x = 2 + i * 2.3, [tx, ty] = brush(S, x, 23, -Math.PI / 2 + (i - 2.5) * .06, 14 + Math.floor(r() * 6), (i - 2.5) * .01, ['#2a4a2a', '#3a6a3a', '#5a8a4a'], .5); if (i % 2 === 0) S.part(M.ell(tx, ty + 3, 1.3, 2.6), ramp('#6a3a1a'), 'v', { dabs: 0 }); } return S.outline(); },
+  'Swamp iris': () => { const S = grassClump(16, 18, 945, { pal: [['#14302a', '#2a5a4a'], ['#2a5a4a', '#4a8a6a'], ['#3a7a5a', '#6aa07a'], ['#1e3a4a']], len: 14, spread: 1.2 }); for (const [x, y] of [[5, 3], [10, 2], [8, 6]]) { S.part(M.ell(x, y, 1.6, 2), ramp('#8a5ad8', '#e0c8ff'), 'flame', { dabs: 0 }); S.px(x, y + 1, '#f2c230'); } return S; },
+  'Glow toadstool': P_(14, 12, 946, S => { for (const [x, h] of [[4, 7], [9, 9]]) { S.rect(x, 12 - h + 2, 2, h - 2, '#d8e0d0'); S.part(M.and(M.ell(x + 1, 12 - h + 2, 3.4, 2.6), (px, py) => py <= 12 - h + 2), ramp('#3ac8a0', '#e0fff0'), 'radial', { dabs: .4 }); } }),
+  'Bog lily': P_(18, 8, 947, S => { for (const [x, y, r] of [[5, 4, 3.4], [12, 4, 2.8]]) S.part(M.not(M.ell(x, y, r, r * .6), M.tri(x, y, x + r, y - 1, x + r, y + 1)), ramp('#3a7a4a'), 'radial'); S.part(M.ell(5, 3, 1.6, 1.2), ramp('#fff0f8'), 'swirl'); S.px(5, 3, '#f2c230'); }),
+  // ---------------- The Rust Wastes ----------------
+  'Rust car': P_(34, 20, 951, S => { S.part(M.rect(1, 8, 32, 8), ramp('#8a4a2a', '#e8a070'), 'h', { dens: .9 }); S.part(M.fn((x, y) => y >= 2 && y < 9 && x >= 8 + (8 - y) * .6 && x < 26 - (8 - y) * .6), ramp('#7a3a22'), 'h'); S.part(M.rect(11, 3, 5, 5), ramp('#1a2a3a', '#6a8aa0'), 'd1', { dabs: 0 }); S.part(M.rect(18, 3, 5, 5), ramp('#1a2a3a', '#6a8aa0'), 'd1', { dabs: 0 }); for (const x of [7, 26]) { S.part(M.ell(x, 16, 3.4, 3.2), ramp('#2a2a30'), 'swirl'); S.px(x, 16, '#8a8a90'); } for (let i = 0; i < 12; i++) { const x = 2 + Math.floor(S.r() * 30), y = 8 + Math.floor(S.r() * 8); S.px(x, y, '#4a2a1a'); } }),
+  'Scrap tower': P_(22, 40, 952, S => { const C = ['#6a6a74', '#8a4a2a', '#4a5a6a', '#9a8a4a', '#5a5a62']; let y = 38; for (let k = 0; y > 4; k++) { const h = 4 + Math.floor(S.r() * 4), w = 8 + Math.floor(S.r() * 10), x = 11 - w / 2 + (S.r() - .5) * 4; S.part(M.rect(Math.round(x), y - h, w, h), ramp(C[k % C.length]), 'h', { dens: .8 }); y -= h; } S.part(M.ell(11, 40, 9, 2), ramp('#3a3632'), 'h', { dabs: 0 }); }),
+  'Satellite dish': P_(28, 32, 953, S => { S.part(M.rect(12, 18, 4, 13), ramp('#6a6a74'), 'v'); S.part(M.rect(7, 29, 14, 3), ramp('#4a4a52'), 'h'); S.part(M.fn((x, y) => { const dx = (x - 14) / 13, dy = (y - 12) / 9; return dx * dx + dy * dy < 1 && y < 16 + dx * 3; }), ramp('#b8b8c0', '#ffffff'), 'swirl'); WB_.branch(S, 14, 12, 21, 4, '#4a4a52'); S.part(M.ell(21, 4, 1.6, 1.6), ramp('#e83a2a'), 'radial'); for (let i = 0; i < 8; i++) S.px(4 + Math.floor(S.r() * 20), 6 + Math.floor(S.r() * 10), '#8a4a2a'); }),
+  'Tire heap': P_(22, 16, 954, S => { for (const [x, y] of [[6, 11], [15, 11], [10, 6], [17, 6]]) { S.part(M.ell(x, y, 5, 3), ramp('#2a2a2e', '#7a7a8a'), 'swirl'); S.clear(M.ell(x, y, 1.8, 1)); } }),
+  'Dead robot': P_(22, 22, 955, S => { S.part(M.rect(5, 9, 12, 10), ramp('#6a7a84', '#d0e0e8'), 'h'); S.part(M.rect(7, 3, 8, 7), ramp('#5a6a74', '#d0e0e8'), 'h'); S.part(M.rect(8, 5, 6, 2), ramp('#1a1a20'), 'h', { dabs: 0 }); S.px(9, 5, '#3cff8a'); S.part(M.rect(1, 12, 4, 3), ramp('#5a6a74'), 'h'); S.part(M.rect(17, 14, 4, 6), ramp('#5a6a74'), 'v'); for (let i = 0; i < 9; i++) S.px(5 + Math.floor(S.r() * 12), 9 + Math.floor(S.r() * 10), '#8a4a2a'); S.part(M.rect(6, 19, 4, 3), ramp('#4a5a64'), 'v'); }),
+  'Junk weeds': () => grassClump(16, 14, 956, { pal: [['#2a3a2a', '#4a5a3a'], ['#4a5a3a', '#6a7a4a', '#8a9a5a'], ['#5a6a3a', '#8a9a5a', '#b0b870'], ['#4a4a5a']] }),
+  'Bolt scatter': P_(16, 8, 957, S => { for (const [x, y, c] of [[3, 4, '#9aa4b0'], [7, 3, '#c9a227'], [11, 5, '#8a4a2a'], [13, 2, '#9aa4b0']]) { S.part(M.ell(x, y, 1.6, 1.3), ramp(c), 'swirl', { dabs: 0 }); } S.rect(5, 6, 4, 1, '#6a6a74'); }),
+  // ---------------- The Sugar Tundra ----------------
+  'Frost pine': P_(28, 52, 961, S => { WB_.trunk(S, 14, 43, 51, 3, '#4a3424'); WB_.tiers(S, 14, 3, 5, 3, 2.4, 8, '#1e4048', '#a8c8d8', true); }),
+  'Frost pine small': P_(20, 34, 962, S => { WB_.trunk(S, 10, 28, 33, 2, '#4a3424'); WB_.tiers(S, 10, 2, 3, 2.5, 2.4, 8, '#24485a', '#b8d0e0', true); }),
+  'Snow boulder': P_(24, 18, 963, S => { WB_.rockBlob(S, 12, 11, 11, 6.5, '#7a7a98', { cap: '#e8eefa' }); }),
+  'Ice spire': P_(16, 36, 964, S => { S.part(M.or(M.tri(8, 0, 12, 34, 4, 34), M.tri(3, 14, 6, 34, 0, 34), M.tri(13, 18, 16, 34, 10, 34)), ramp('#6aa8e0', '#ffffff'), 'v', { dens: .8, dabs: .25 }); line(8, 3, 8, 30, (x, y) => S.px(x, y, '#e8f8ff')); }),
+  'Peppermint stick': P_(10, 22, 965, S => { S.part(M.or(M.rect(4, 5, 3, 17), M.rect(1, 2, 6, 3), M.rect(1, 2, 2, 6)), ramp('#ffffff'), 'v'); for (let y = 0; y < 22; y++) for (let x = 0; x < 10; x++) if (S.on(x, y) && (x + y) % 5 < 2) S.px(x, y, '#e82a4a'); }),
+  'Gumdrop bush': P_(20, 14, 966, S => { WB_.canopy(S, [[7, 9, 6, 4.5], [13, 8, 6, 5]], '#3a7a5a', '#e0f0e0', { flow: 'swirl' }); for (const [x, y, c] of [[5, 6, '#ff5a8a'], [11, 5, '#f2c230'], [15, 8, '#5ac8f0'], [8, 10, '#a85ae0']]) S.part(M.ell(x, y, 1.6, 1.4), ramp(c, '#ffffff'), 'radial', { dabs: .4 }); }),
+  'Frost grass': () => grassClump(16, 14, 967, { pal: [['#4a6a8a', '#6a8aa8'], ['#6a8aa8', '#a8c0d8', '#d8e8f8'], ['#8aa8c8', '#c8d8f0', '#ffffff'], ['#5a6a9a']] }),
+  'Snow tuft': P_(16, 8, 968, S => { S.part(M.ell(8, 5, 7, 3), ramp('#d8e0f4', '#ffffff'), 'h', { dabs: .3 }); for (let x = 3; x < 14; x += 3) S.px(x, 2 + (x % 2), '#5a7a6a'); }),
+  // ---------------- The Withered Woods ----------------
+  'Twisted oak': P_(36, 46, 971, S => { const R = ramp('#4a3e46').map(hex); const br = (x, y, a, l, d) => { if (d > 5 || l < 2) return; const x2 = x + Math.cos(a) * l, y2 = y + Math.sin(a) * l; line(x, y, x2, y2, (px, py) => { S.set(px, py, R[1 + (d % 3)]); if (d < 3) { S.set(px + 1, py, R[0]); if (d < 1) S.set(px - 1, py, R[2]); } }); br(x2, y2, a - .55 + Math.sin(d * 3.1) * .2, l * .68, d + 1); br(x2, y2, a + .5, l * .62, d + 1); }; br(18, 45, -Math.PI / 2 + .12, 14, 0); S.part(M.fn((x, y) => y > 36 && y < 46 && Math.abs(x + .5 - 18) < 3 + (y - 36) * .5), ramp('#3a3038'), 'v'); }),
+  'Hanging willow': P_(36, 48, 972, S => { WB_.trunk(S, 18, 22, 47, 4, '#3a3440'); WB_.canopy(S, [[18, 14, 14, 10]], '#3a4a4a', '#a8b8b0', { dens: .8 }); for (let x = 5; x < 32; x += 2) { const L = 16 + S.r() * 14; line(x, 16, x + (S.r() - .5) * 2, 16 + L, (px, py) => S.px(px, py, S.r() < .5 ? '#4a5a52' : '#2a3434')); } }),
+  'Old headstone': P_(16, 20, 973, S => { S.part(M.or(M.rect(3, 7, 10, 12), M.ell(8, 7, 5, 4.4)), ramp('#6a6a80', '#c8c8d8'), 'v'); S.rect(5, 9, 6, 1, '#3a3a4a'); S.rect(6, 11, 4, 1, '#3a3a4a'); for (let i = 0; i < 6; i++) S.px(3 + Math.floor(S.r() * 10), 12 + Math.floor(S.r() * 6), '#4a6a3a'); S.part(M.rect(1, 18, 14, 2), ramp('#3a3a2e'), 'h', { dabs: 0 }); }),
+  'Thorn bush': () => { const S = new Sprite(22, 16, 974), r = S.r; for (let i = 0; i < 14; i++) { const a = -Math.PI / 2 + (r() - .5) * 2.6, L = 5 + r() * 7; const [ex, ey] = brush(S, 11 + (r() - .5) * 6, 15, a, Math.round(L), (r() - .5) * .3, ['#2a2430', '#3e3446', '#5a4a5a'], .5); S.px(ex, ey, '#8a2a3a'); } return S.outline(); },
+  'Ghost grass': () => grassClump(16, 14, 975, { pal: [['#1e2a3a', '#2e3e4a'], ['#3a4a5a', '#6a7a8a', '#9aa8b8'], ['#5a6a7a', '#9aa8b8', '#d0d8e8'], ['#4a4a6a']] }),
+  'Violet shroom': P_(14, 12, 976, S => { for (const [x, h] of [[3, 6], [8, 9], [11, 5]]) { S.rect(x, 12 - h + 2, 2, h - 2, '#c8c0d8'); S.part(M.and(M.ell(x + 1, 12 - h + 2, 3, 2.4), (px, py) => py <= 12 - h + 2), ramp('#8a3ac8', '#f0c8ff'), 'radial', { dabs: .4 }); } }),
+  'Bone heap': P_(18, 10, 977, S => { S.part(M.ell(5, 7, 2.6, 2.2), ramp('#e0d8c0'), 'contour'); S.px(4, 7, '#2a1a10'); S.px(6, 7, '#2a1a10'); line(8, 8, 17, 6, (x, y) => S.px(x, y, '#ece4d0')); line(10, 4, 15, 9, (x, y) => S.px(x, y, '#d8d0bc')); }),
+  // ---------------- The Salt Coast ----------------
+  'Palm': P_(34, 48, 981, S => { for (let y = 14; y < 48; y++) { const x = 17 + Math.sin(y * .08) * 2; S.part(M.rect(Math.round(x) - 1, y, 3, 1), ramp(y % 3 ? '#8a6a42' : '#6a4a2e'), 'h', { dabs: 0 }); } for (let k = 0; k < 7; k++) { const a = -Math.PI + k * .52 - .15; brush(S, 17, 14, a, 14, (a < -Math.PI / 2 ? -1 : 1) * .07, ['#2a5a2a', '#3a7a3a', '#6aa04a', '#a8c86a'], .9); } S.part(M.ell(17, 15, 2, 1.6), ramp('#6a4a2a'), 'swirl'); }),
+  'Palm lean': P_(36, 46, 982, S => { for (let y = 12; y < 46; y++) { const x = 10 + (46 - y) * .45 + Math.sin(y * .1) * 1.5; S.part(M.rect(Math.round(x) - 1, y, 3, 1), ramp(y % 3 ? '#8a6a42' : '#6a4a2e'), 'h', { dabs: 0 }); } const tx = 25, ty = 12; for (let k = 0; k < 7; k++) { const a = -Math.PI + k * .52 - .15; brush(S, tx, ty, a, 13, (a < -Math.PI / 2 ? -1 : 1) * .08, ['#2a5a2a', '#3a7a3a', '#6aa04a', '#a8c86a'], .9); } }),
+  'Beach rock': P_(24, 16, 983, S => { WB_.rockBlob(S, 12, 9, 11, 6.5, '#7a7a8a'); for (let i = 0; i < 6; i++) S.px(3 + Math.floor(S.r() * 18), 11 + Math.floor(S.r() * 4), '#2a4a5a'); S.part(M.and(M.ell(12, 9, 11, 6.5), (x, y) => y > 12), ramp('#3a5a5a'), 'h', { dabs: 0 }); }),
+  'Dune grass': () => grassClump(18, 16, 984, { pal: [['#6a7a3a', '#8a9a4a'], ['#8a9a4a', '#b8b860', '#d8d890'], ['#a8a850', '#d0d080', '#f0f0b0'], ['#7a8aa0']], spread: 1.6 }),
+  'Shells': P_(14, 8, 985, S => { S.part(M.ell(4, 4, 2.6, 2), ramp('#f0c8b0'), 'radial'); S.part(M.ell(10, 5, 2, 1.6), ramp('#e8e0d0'), 'swirl'); S.px(7, 2, '#e8803a'); S.px(8, 2, '#e8803a'); S.px(7, 1, '#e8803a'); }),
+  // ---------------- The Crash Fields ----------------
+  'Crystal spire': P_(20, 42, 991, S => { S.part(M.or(M.tri(10, 0, 14, 40, 6, 40), M.tri(4, 16, 8, 40, 1, 40), M.tri(16, 20, 19, 40, 12, 40)), ramp('#7a3ac8', '#f0d0ff'), 'v', { dens: .8, dabs: .3 }); line(10, 4, 10, 36, (x, y) => S.px(x, y, '#f8e8ff')); }),
+  'Meteor rock': P_(28, 22, 992, S => { WB_.rockBlob(S, 14, 12, 13, 8.5, '#3a3448', { warm: '#c8a0ff' }); for (let i = 0; i < 9; i++) { const x = 4 + Math.floor(S.r() * 20), y = 6 + Math.floor(S.r() * 10); if (S.on(x, y)) { S.px(x, y, '#3cffd0'); } } S.part(M.ell(14, 10, 4, 2.4), ramp('#1a1428'), 'swirl', { dabs: 0 }); }),
+  'Crystal cluster': P_(20, 18, 993, S => { for (const [x, h, c] of [[5, 10, '#3ac8e0'], [10, 15, '#7a5ae0'], [15, 9, '#3ae0a0']]) S.part(M.tri(x, 17 - h, x + 3, 17, x - 3, 17), ramp(c, '#ffffff'), 'v', { dabs: .3 }); }),
+  'Alien pod': P_(18, 20, 994, S => { S.part(M.ell(9, 11, 7, 8.5), ramp('#4a8a3a', '#e0ff90'), 'contour'); S.part(M.ell(9, 7, 3, 2.4), ramp('#c8ff5a', '#ffffff'), 'radial'); for (let y = 6; y < 18; y += 3) S.px(5 + (y % 2), y, '#2a4a1a'); S.part(M.rect(3, 18, 12, 2), ramp('#2a3a1a'), 'h', { dabs: 0 }); }),
+  'Glow moss': P_(18, 8, 995, S => { S.part(M.ell(9, 5, 8, 3), ramp('#2a6a5a', '#9affd0'), 'swirl', { dens: .9 }); for (let i = 0; i < 5; i++) S.px(3 + Math.floor(S.r() * 12), 3 + Math.floor(S.r() * 3), '#d0fff0'); }),
+  'Crystal shards': P_(16, 10, 996, S => { for (const [x, h, c] of [[4, 6, '#9a6ae8'], [9, 8, '#5ad0f0'], [13, 5, '#e05ac8']]) S.part(M.tri(x, 10 - h, x + 2, 10, x - 2, 10), ramp(c, '#ffffff'), 'v', { dabs: .3 }); }),
+  // ---------------- structures out in the wilds ----------------
+  'Rock mound': P_(48, 34, 997, S => { WB_.rockBlob(S, 24, 18, 23, 15, '#6a6274'); S.part(M.and(M.ell(24, 18, 23, 15), (x, y) => y < 12 + Math.sin(x * .4) * 2), ramp('#5a7a4a'), 'curl', { dabs: 0 }); }),
+});
+// sprites in the wilds that sit flat on the ground (no shadow, drawn first)
+const WFLAT = new Set(['Clover patch', 'Bolt scatter', 'Shells', 'Glow moss', 'Snow tuft', 'Bog lily', 'Bleached ribs', 'Steer skull', 'Bone heap', 'Crystal shards']);
+// lights some wild sprites give off at night: [colour kind, radius]
+const WGLOW = { 'Glow toadstool': ['green', 8], 'Glow moss': ['green', 7], 'Crystal spire': ['wisp', 12], 'Crystal cluster': ['wisp', 9], 'Meteor rock': ['green', 8], 'Alien pod': ['green', 9], 'Crystal shards': ['wisp', 6] };
+// ground materials for the wilds
+Object.assign(MATS, {
+  wmeadow: { ramp: ['#2e5a32', '#457f38', '#6aa042', '#9ec64a', '#e2dc6a'], flow: FLOW.curl, len: 5, curve: .16 },
+  wforest: { ramp: ['#16302a', '#22442e', '#355e34', '#56803c', '#8aa64e'], flow: FLOW.curl, len: 4, curve: .14 },
+  wdune: { ramp: ['#c08038', '#d89a48', '#e8b45a', '#f2cc78', '#fbe6a8'], flow: (x, y) => -.3 + Math.sin(x * .025 + y * .012) * .5, len: 5 },
+  wred: { ramp: ['#7a3a22', '#9a4e2a', '#b86636', '#d08448', '#eab074'], flow: (x, y) => .2 + N1(x * .02, y * .02) * 1.2, len: 4 },
+  wbog: { ramp: ['#1a3226', '#264430', '#36583a', '#4e7040', '#7e9a56'], flow: (x, y) => -Math.PI / 2 + (N1(x * .05, y * .05) - .5) * 1.4, len: 4, curve: .16 },
+  wrust: { ramp: ['#2a2420', '#3e342a', '#544636', '#6e5a40', '#8e7652'], flow: FLOW.curl, len: 3 },
+  wsnow: { ramp: ['#8a98c8', '#aebce2', '#cfd9f2', '#ecf1fb', '#ffffff'], flow: (x, y) => Math.sin(x * .02 + y * .03) * .6 + .2, len: 5 },
+  wdead: { ramp: ['#1c2228', '#283038', '#384240', '#4a5448', '#727a62'], flow: FLOW.curl, len: 4, curve: .12 },
+  wbeach: { ramp: ['#c8a060', '#dcb876', '#ead08e', '#f4e2aa', '#fff4d0'], flow: (x, y) => Math.sin(y * .05) * .3, len: 5 },
+  wcrystal: { ramp: ['#1e1a34', '#2c2648', '#3e3462', '#58508a', '#9a8ad0'], flow: FLOW.curl, len: 3 },
+  wdirt: { ramp: ['#6a4a32', '#8a6040', '#a87a50', '#c89a68', '#e0bc8a'], flow: (x, y) => .2 + Math.sin(y * .05) * .3, len: 3 },
+  wsea: { ramp: ['#0e2050', '#16307a', '#1f4596', '#3466b0', '#8ab8e8'], flow: (x, y) => Math.sin(x * .05 + N2(x * .012, y * .012) * 6) * .5, len: 6 },
+  wcliffred: { ramp: ['#6a3220', '#8e4a2a', '#ae6436', '#cc864a', '#eab070'], flow: () => 0, len: 5, tone: (x, y) => .5 + (H1(Math.floor((y + N1(x * .03, y * .03) * 6) / 3)) - .5) * .7, block: { face: ['#3a1a12', '#5a2a1a', '#7a3e24'], fh: 10 } },
+  wcliffgrey: { ramp: ['#4a4a58', '#62626e', '#7a7a86', '#9898a2', '#c0c0c8'], flow: () => 0, len: 4, tone: (x, y) => .5 + (H1(Math.floor((y + N1(x * .03, y * .03) * 6) / 3)) - .5) * .6, block: { face: ['#24242e', '#34343e', '#46464e'], fh: 10 } },
+  wcliffsnow: { ramp: ['#7a86b0', '#9aa6cc', '#c0cae6', '#e2e8f6', '#ffffff'], flow: () => 0, len: 4, block: { face: ['#3a4466', '#4e5a80', '#66729a'], fh: 10 } },
+  wcliffsand: { ramp: ['#9a6a3a', '#b8844a', '#d0a060', '#e4bc7a', '#f6dca0'], flow: () => 0, len: 5, tone: (x, y) => .5 + (H1(Math.floor(y / 3)) - .5) * .6, block: { face: ['#5a3a1e', '#7a522a', '#9a6a36'], fh: 10 } },
+  wcavefloor: { ramp: ['#3a3236', '#4e4448', '#665a5a', '#82746e', '#a8988a'], flow: FLOW.curl, len: 3 },
+});
+for (const k of ['wmeadow', 'wforest', 'wdune', 'wred', 'wbog', 'wrust', 'wsnow', 'wdead', 'wbeach', 'wcrystal', 'wdirt', 'wsea', 'wcavefloor']) SOFT.add(k);
+for (const k of ['wcliffred', 'wcliffgrey', 'wcliffsnow', 'wcliffsand']) { SOFT.add(k); NATURAL.add(k); }
+// the generated caves get a painter theme of their own
+AT.cave = { g: 'wcavefloor', p: 'stone', floor: 'stonefloor', sand: 'soil', water: 'pond', shal: 'pond', bord: 'wcliffgrey', wall: ['Meteor rock', 'Lichen boulder', 'Snow boulder', 'Red boulder'], alt: ['Crystal cluster', 'Bog stump'], deco: ['Crystal shards', 'Glow moss', 'Bone heap'], tuft: ['Glow moss', 'Crystal shards'], tuftD: .05, edge: ['Crystal cluster', 'Meteor rock'], edgeP: .25 };
+
+// the story regions use the new set too: the old trees, rocks and plants now point at their new versions
+{
+  const A_ = (to, f) => () => (f ? scaleS(NS(to), f) : NS(to));
+  Object.assign(MOBJ, {
+    'Oak': A_('Meadow oak'), 'Oak small': A_('Meadow oak', .74), 'Birch': A_('Meadow birch'), 'Olive tree': A_('Meadow birch', .85), 'Cypress': A_('Fir', .9), 'Bush': A_('Hedge bush'),
+    'Pine A': A_('Spruce tall'), 'Pine B': A_('Fir'), 'Pine C': A_('Spruce small'), 'Pine D': A_('Spruce tall', .82), 'Pine E': A_('Fir', .78), 'Pine F': A_('Spruce small', 1.12),
+    'Snow pine A': A_('Frost pine'), 'Snow pine B': A_('Frost pine small'), 'Snow pine C': A_('Frost pine', .8), 'Snow pine D': A_('Frost pine small', 1.15), 'Snow pine E': A_('Frost pine', .9), 'Snow pine F': A_('Frost pine small', .85), 'Snowy pine': A_('Frost pine small'),
+    'Swamp willow': A_('Swamp cypress', .9), 'Dead tree': A_('Twisted oak', .8), 'Stump': A_('Mossy stump'), 'Log': A_('Fallen log', .8),
+    'Mossy rock': A_('Lichen boulder', .75), 'Moss rock': A_('Lichen boulder', .8), 'Rock': A_('Dune rock', .55), 'Boulder': A_('Lichen boulder'), 'Sandstone rock': A_('Dune rock', .7), 'Snow rock': A_('Snow boulder', .7),
+    'Saguaro': A_('Saguaro tall', .8), 'Barrel cactus': A_('Globe cactus'), 'Prickly pear': A_('Agave', .85), 'Desert shrub': A_('Desert sage'), 'Dry grass': A_('Desert grass'),
+    'Ice crystal': A_('Ice spire', .5), 'Candy cane': A_('Peppermint stick'), 'Reeds': A_('Cattail clump', .85), 'Cattails': A_('Cattail clump'), 'Irises': A_('Swamp iris'), 'Glowcap': A_('Glow toadstool'),
+    'Fern': A_('Bracken'), 'Lily pads': A_('Bog lily'), 'Car wreck': A_('Rust car'), 'Toadstool': A_('Forest mushrooms'), 'Cow skull': A_('Steer skull'), 'Bones': A_('Bleached ribs', .8),
+  });
+}
+
+// ================= v2.0 ENDLESS WORLD: the window painter =================
+// Paints one window of the endless world (N x N tiles) in the same Van Gogh style as the story regions.
+// Every random choice is a hash of WORLD coordinates (never a running random stream), and the painter works on the
+// window plus a margin, then keeps only the middle — so neighbouring windows meet without a seam.
+const WTH = {
+  meadow: { g: 'wmeadow', p: 'wdirt', sand: 'wdirt', water: 'water', shal: 'shallow', cliff: 'wcliffgrey', wet: '#2a4a2a' },
+  forest: { g: 'wforest', p: 'wdirt', sand: 'wdirt', water: 'water', shal: 'shallow', cliff: 'wcliffgrey', wet: '#1a2a20' },
+  desert: { g: 'wdune', p: 'dpath', sand: 'wdune', water: 'water', shal: 'shallow', cliff: 'wcliffsand', wet: '#5a3a1a' },
+  badlands: { g: 'wred', p: 'dpath', sand: 'wred', water: 'water', shal: 'shallow', cliff: 'wcliffred', wet: '#4a2414' },
+  marsh: { g: 'wbog', p: 'mud', sand: 'mud', water: 'bog', shal: 'marshshal', cliff: 'wcliffgrey', wet: '#101a14' },
+  junk: { g: 'wrust', p: 'mud', sand: 'junk', water: 'oil', shal: 'oil', cliff: 'wcliffgrey', wet: '#141210' },
+  snow: { g: 'wsnow', p: 'snowpath', sand: 'wsnow', water: 'ice', shal: 'ice', cliff: 'wcliffsnow', wet: '#4a5a8a' },
+  dead: { g: 'wdead', p: 'stone', sand: 'soil', water: 'pond', shal: 'pond', cliff: 'wcliffgrey', wet: '#101418' },
+  beach: { g: 'wbeach', p: 'wdirt', sand: 'wbeach', water: 'wsea', shal: 'shallow', cliff: 'wcliffsand', wet: '#8a6a3a' },
+  ocean: { g: 'wsea', p: 'wdirt', sand: 'wbeach', water: 'wsea', shal: 'shallow', cliff: 'wcliffgrey', wet: '#3a4a6a' },
+  crystal: { g: 'wcrystal', p: 'stone', sand: 'wcrystal', water: 'pond', shal: 'pond', cliff: 'wcliffgrey', wet: '#0e0c1a' },
+};
+const WWATER = new Set(['water', 'shallow', 'bog', 'marshshal', 'oil', 'ice', 'pond', 'wsea', 'nightwater']);
+function wh32(x, y, s) { let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(s | 0, 1274126177); h = Math.imul(h ^ (h >>> 13), 1103515245); h ^= h >>> 16; return h >>> 0; }
+const whf = (x, y, s) => wh32(x, y, s) / 4294967296;
+function paintWorldWin(I) {
+  const w = I.w, h = I.h, W = w * 16, H = h * 16, ox = I.ox, oy = I.oy, OX = ox * 16, OY = oy * 16, BK = I.biomes, ON = I.objNames;
+  const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h) ? -1 : y * w + x;
+  const T = (x, y) => { const i = at(x, y); return i < 0 ? 0 : I.t[i]; };
+  const th = i => WTH[BK[I.b[i]]] || WTH.meadow;
+  const sty = i => I.st[i];
+  // 1. a material per tile
+  const tmat = new Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    const t = I.t[i], s = sty(i), S = s && TSTYLE[s], TH = th(i);
+    let k;
+    if (S && S.mat) k = S.mat === '@g' ? TH.g : S.mat === '@sand' ? TH.sand : S.mat;
+    else switch (t) {
+      case 1: case 7: k = TH.p; break; case 3: k = TH.water; break; case 4: k = TH.shal; break; case 8: k = 'wood'; break;
+      case 12: k = TH.water; break; case 14: k = TH.sand; break; case 15: k = 'ice'; break; case 17: k = 'ravine'; break;
+      case 6: k = I.s[i] ? TH.cliff : TH.cliff; break;
+      default: k = TH.g;
+    }
+    if (!MATS[k]) k = TH.g;
+    tmat[i] = k;
+  }
+  // 2. material per pixel; soft materials get wobbled edges (noise in world pixels, so it lines up across windows)
+  const keys = [], kix = {}, ki = k => kix[k] != null ? kix[k] : (kix[k] = keys.push(k) - 1);
+  const tk = new Int16Array(w * h); for (let i = 0; i < w * h; i++) tk[i] = ki(tmat[i]);
+  const soft = keys.map(k => SOFT.has(k));
+  const pm = new Int16Array(W * H);
+  for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+    const t0 = tk[(py >> 4) * w + (px >> 4)]; if (!soft[t0]) { pm[py * W + px] = t0; continue; }
+    const X = px + OX, Y = py + OY, amp = 7;
+    const wx = Math.round(px + (N2(X * .06, Y * .06) - .5) * amp * 2 + (N1(X * .2, Y * .2) - .5) * 2), wy = Math.round(py + (N3(X * .06 + 9, Y * .06) - .5) * amp * 2 + (N2(X * .2 + 3, Y * .2) - .5) * 2);
+    const t1 = tk[Math.max(0, Math.min(h - 1, wy >> 4)) * w + Math.max(0, Math.min(w - 1, wx >> 4))];
+    pm[py * W + px] = soft[t1] ? t1 : t0;
+  }
+  const P = new Pix(W, H);
+  const ramps = keys.map(k => MATS[k].ramp.map(hex));
+  const shade = (k, X, Y, j) => { const m = MATS[keys[k]], v = (m.tone ? m.tone(X, Y) : N1(X * .03 + 5, Y * .03) * .7 + N2(X * .11, Y * .11) * .3) + (j - .5) * .35; const R2 = ramps[k]; return R2[Math.max(0, Math.min(R2.length - 1, Math.floor(v * R2.length)))]; };
+  for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) { const X = px + OX, Y = py + OY; P.set(px, py, shade(pm[py * W + px], X, Y, whf(X, Y, 1))); }
+  // strokes: a fixed handful per 8x8 world cell, seeded by the cell
+  const cx0 = Math.floor(OX / 8), cy0 = Math.floor(OY / 8), cx1 = Math.floor((OX + W) / 8), cy1 = Math.floor((OY + H) / 8);
+  for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) {
+    const r = mulberry32(wh32(cx, cy, 77));
+    for (let n = 0; n < 34; n++) {
+      const X = cx * 8 + r() * 8, Y = cy * 8 + r() * 8, px = Math.floor(X - OX), py = Math.floor(Y - OY);
+      const a0 = r(), l0 = r(), c0 = r(), d0 = r();
+      if (px < 0 || py < 0 || px >= W || py >= H) continue;
+      const k = pm[py * W + px], m = MATS[keys[k]];
+      if (m.dens != null && d0 > m.dens) continue;
+      const a = (m.flow ? m.flow(X, Y) : FLOW.curl(X, Y)) + (a0 - .5) * (m.jit || .45), L = (m.len || 3) + Math.floor(l0 * 3), c = shade(k, X, Y, c0);
+      if (m.curve) { let x = px, y = py, aa = a; const cv = m.curve * (c0 < .5 ? -1 : 1); for (let s = 0; s < L; s++) { const nx = x + Math.cos(aa) * 1.2, ny = y + Math.sin(aa) * 1.2; line(x, y, nx, ny, (qx, qy) => P.set(qx, qy, c)); x = nx; y = ny; aa += cv; } }
+      else line(px, py, px + Math.cos(a) * L, py + Math.sin(a) * L, (qx, qy) => P.set(qx, qy, c));
+    }
+  }
+  for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) { const k = pm[py * W + px], m = MATS[keys[k]]; if (m.seam && m.seam(px + OX, py + OY) && whf(px + OX, py + OY, 2) < .88) P.set(px, py, ramps[k][0]); }
+  // 3. the land rolls: light the height field from the top-left (smooth, never blocky)
+  if (I.hf) {
+    const hw = w + 1, HF = I.hf;
+    for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+      const k = pm[py * W + px]; if (WWATER.has(keys[k])) continue;
+      const fx = px / 16, fy = py / 16, x0 = Math.min(w - 1, Math.floor(fx)), y0 = Math.min(h - 1, Math.floor(fy)), u = fx - x0, v = fy - y0;
+      const a = HF[y0 * hw + x0], b = HF[y0 * hw + x0 + 1], c = HF[(y0 + 1) * hw + x0], d = HF[(y0 + 1) * hw + x0 + 1];
+      const gx = (b - a) * (1 - v) + (d - c) * v, gy = (c - a) * (1 - u) + (d - b) * u;
+      const s = Math.max(-1, Math.min(1, -(gx * .8 + gy * 1.1) * 2.2)), i = (py * W + px) * 4;
+      if (s > 0) { const kk = s * .16; P.d[i] += (255 - P.d[i]) * kk * .8; P.d[i + 1] += (240 - P.d[i + 1]) * kk * .8; P.d[i + 2] += (200 - P.d[i + 2]) * kk * .6; }
+      else { const kk = -s * .2; P.d[i] += (SHADOW[0] - P.d[i]) * kk; P.d[i + 1] += (SHADOW[1] - P.d[i + 1]) * kk; P.d[i + 2] += (SHADOW[2] - P.d[i + 2]) * kk; }
+    }
+  }
+  // 4. shores: shallow tint into the water, a wet band on land, foam dashes (all decided per world pixel)
+  {
+    const isW = new Uint8Array(W * H); let any = false;
+    for (let i = 0; i < W * H; i++) if (WWATER.has(keys[pm[i]])) { isW[i] = 1; any = true; }
+    if (any) {
+      const dW = new Float32Array(W * H).fill(99), dL = new Float32Array(W * H).fill(99);
+      for (let i = 0; i < W * H; i++) if (isW[i]) dL[i] = 0; else dW[i] = 0;
+      const pass = (D) => { const s2 = 1.41; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x; let v = D[i]; if (x) v = Math.min(v, D[i - 1] + 1); if (y) { v = Math.min(v, D[i - W] + 1); if (x) v = Math.min(v, D[i - W - 1] + s2); if (x < W - 1) v = Math.min(v, D[i - W + 1] + s2); } D[i] = v; }
+        for (let y = H - 1; y >= 0; y--) for (let x = W - 1; x >= 0; x--) { const i = y * W + x; let v = D[i]; if (x < W - 1) v = Math.min(v, D[i + 1] + 1); if (y < H - 1) { v = Math.min(v, D[i + W] + 1); if (x < W - 1) v = Math.min(v, D[i + W + 1] + s2); if (x) v = Math.min(v, D[i + W - 1] + s2); } D[i] = v; } };
+      pass(dW); pass(dL);
+      const mixAt = (i, c, a) => { const j = i * 4; P.d[j] += (c[0] - P.d[j]) * a; P.d[j + 1] += (c[1] - P.d[j + 1]) * a; P.d[j + 2] += (c[2] - P.d[j + 2]) * a; };
+      const sh = hex('#3a7aa0'), foam = hex('#e8f4ff');
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const i = y * W + x, X = x + OX, Y = y + OY, n = N1(X * .15, Y * .2);
+        if (isW[i] && dW[i] <= 9) mixAt(i, sh, Math.pow(1 - dW[i] / 9, 1.4) * (.45 + n * .35));
+        if (!isW[i] && dL[i] <= 4) mixAt(i, hex(th((y >> 4) * w + (x >> 4)).wet), (1 - dL[i] / 5) * .4);
+        if (isW[i] && dW[i] >= 1.5 && dW[i] <= 3.5 + N2(X * .1, Y * .1) * 3 && whf(X, Y, 3) < .03) { const L = 2 + whf(X, Y, 4) * 5; line(x, y, x + L, y, (px, py) => P.set(px, py, foam, 120)); }
+      }
+    }
+  }
+  // 5. raised ground: a face under every lower edge of a cliff or wall, a lit lip on top
+  const FACE = keys.map(k => MATS[k].block ? MATS[k].block.face.map(hex) : null), FH = keys.map(k => MATS[k].block ? MATS[k].block.fh : 0), LIP = keys.map(k => hex(MATS[k].ramp[4]));
+  const ravK = kix.ravine;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x, k = pm[i], X = x + OX, Y = y + OY;
+    if (FACE[k]) {
+      const fh = FH[k] || 3; let d = 0; while (d <= fh && y + d + 1 < H && pm[i + (d + 1) * W] === k) d++;
+      if (d < fh && y + d + 1 < H) { const F = FACE[k]; if (FH[k]) { const v = d / fh + (whf(X, Y, 5) - .5) * .3; P.set(x, y, F[Math.max(0, Math.min(2, Math.floor(v * 3)))]); if ((X * 7 + (Y >> 2)) % 9 === 0 && whf(X, Y >> 2, 6) < .5) P.set(x, y, F[0]); } else P.set(x, y, F[d ? 0 : 1], 200); }
+      else if (y > 0 && pm[i - W] !== k && whf(X, Y, 7) < .8) P.set(x, y, LIP[k], 150);
+    }
+    if (k === ravK && ravK != null) { let d = 0; while (d < 10 && y - d - 1 >= 0 && pm[i - (d + 1) * W] === k) d++; if (d < 9 && y - d - 1 >= 0) { const F = ['#3a2418', '#5a3420', '#7a4a2a', '#9a6438']; P.set(x, y, hex(F[Math.max(0, Math.min(3, 3 - Math.floor(d / 2.5) + (whf(X, Y, 8) < .25 ? -1 : 0)))])); if (d === 0) P.set(x, y, hex('#e8c080')); } }
+  }
+  // walls of crushed cars, stacked two to a tile
+  if (kix.carstack != null) {
+    const CK = kix.carstack, cols = ['#8a3a2a', '#3a5a7a', '#a8883a', '#4a6a4a', '#6a6a74', '#9a5a2a', '#5a4a6a', '#a8a090'];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (tmat[y * w + x] !== 'carstack' || I.reg[y * w + x]) continue;
+      const WX = x + ox, WY = y + oy;
+      for (let row = 0; row < 2; row++) {
+        const c = mixh(cols[Math.floor(whf(WX >> 1, WY * 2 + row, 31) * cols.length)], '#3a3026', .35), R = ramp(c).map(hex), y0 = y * 16 + row * 8, seam = ((WX + row + (WY & 1)) & 1) === 0;
+        for (let px = 0; px < 16; px++) for (let py = 0; py < 7; py++) {
+          if (seam && px === 0) continue;
+          if (pm[(y0 + py) * W + x * 16 + px] !== CK || pm[Math.min(H - 1, y0 + py + 7) * W + x * 16 + px] !== CK) continue;
+          let v = py === 0 ? 3 : py === 6 ? 0 : 1 + (whf(px + WX * 16, y0 + py + OY, 32) < .35 ? 1 : 0); if (py === 2 && px > 3 && px < 12 && !seam) v = 0;
+          P.set(x * 16 + px, y0 + py, R[v]);
+        }
+        if (!seam && whf(WX, WY * 2 + row, 33) < .45) for (let k2 = 0; k2 < 3; k2++) if (pm[(y0 + 3) * W + x * 16 + 5 + k2] === CK) P.set(x * 16 + 5 + k2, y0 + 3, hex('#7a9ab0'));
+        for (let k2 = 0; k2 < 5; k2++) { const xx = x * 16 + Math.floor(whf(WX, WY * 2 + row, 40 + k2) * 16), yy = y0 + Math.floor(whf(WX, WY * 2 + row, 50 + k2) * 7); if (pm[yy * W + xx] === CK) P.set(xx, yy, hex(k2 % 2 ? '#6a3418' : '#9a5a2a')); }
+      }
+    }
+  }
+  // bridges
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (I.t[y * w + x] === 12 && !I.reg[y * w + x]) {
+    const hz = T(x - 1, y) === 12 || T(x + 1, y) === 12 || T(x - 1, y) === 1 || T(x + 1, y) === 1;
+    for (let py = 0; py < 16; py++) for (let px = 0; px < 16; px++) { const X = x * 16 + px, Y = y * 16 + py, q = hz ? px : py; if (q % 4 === 3) continue; P.set(X, Y, hex(q % 4 === 2 ? '#5d3a1a' : (whf(X + OX, Y + OY, 9) < .5 ? '#8b5a2b' : '#a8743e'))); }
+  }
+  // 6. the regions show through: everything on a region tile goes transparent, with a soft fade at the edge
+  for (let ty = 0; ty < h; ty++) for (let tx = 0; tx < w; tx++) {
+    const ti = ty * w + tx; if (!I.reg[ti]) continue;
+    const nl = !(I.reg[at(tx - 1, ty)] ?? 1), nr = !(I.reg[at(tx + 1, ty)] ?? 1), nu = !(I.reg[at(tx, ty - 1)] ?? 1), nd = !(I.reg[at(tx, ty + 1)] ?? 1);
+    for (let py = 0; py < 16; py++) for (let px = 0; px < 16; px++) {
+      let d = 99; if (nl) d = Math.min(d, px); if (nr) d = Math.min(d, 15 - px); if (nu) d = Math.min(d, py); if (nd) d = Math.min(d, 15 - py);
+      const i = ((ty * 16 + py) * W + tx * 16 + px) * 4, a = d >= 6 ? 0 : (1 - d / 6) * (.75 + whf(px + tx * 16 + OX, py + ty * 16 + OY, 10) * .25);
+      P.d[i + 3] = Math.round(P.d[i + 3] * a);
+    }
+  }
+  // 7. objects: the biome sprites, structure pieces and props
+  const OBJ = [], LIGHTS = [];
+  const put = (name, x, y, o = {}) => { OBJ.push(Object.assign({ s: typeof name === 'string' ? NS(name) : name, x, y, shadow: true }, o)); };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x; if (I.reg[i]) continue;
+    const WX = x + ox, WY = y + oy, cx = x * 16 + 8, by = y * 16 + 15, fl = whf(WX, WY, 11) < .5;
+    const jx = Math.round((whf(WX, WY, 12) - .5) * 8), jy = Math.round((whf(WX, WY, 13) - .5) * 6), v = Math.floor(whf(WX, WY, 14) * 5);
+    const t = I.t[i], s = sty(i), S = s && TSTYLE[s], o = I.o[i];
+    if (S && S.obj) {
+      if (S.big) { put(whf(WX, WY, 15) < .5 ? 'Big tent' : 'Big tent 2', cx, by + 4, { flip: fl }); continue; }
+      let name = S.obj;
+      if (S.seg) { const hz = sty(at(x - 1, y)) === s || sty(at(x + 1, y)) === s, vt = sty(at(x, y - 1)) === s || sty(at(x, y + 1)) === s; if (!hz && vt) name = { Fence: 'FenceV', Rail: 'RailV' }[name] || name; put(name, cx, by, { shadow: false }); }
+      else put(NSV(name, v), cx, by, { flip: fl });
+      if (S.light) LIGHTS.push([cx, by - 10, 9, 'fire']);
+      continue;
+    }
+    if (S && S.rocks) { const open = [T(x, y + 1), T(x - 1, y), T(x + 1, y)].some(q => q !== 6 && q !== 2); if (open && whf(WX, WY, 16) < .3) put(NSV(S.mat === 'rockblock' ? 'Lichen boulder' : 'Red boulder', v), cx + jx, by + 3, { flip: fl }); continue; }
+    if (S && S.mat && (t === 2 || t === 6 || t === 13 || t === 16)) continue;
+    if (o) {
+      const name = ON[o]; if (!name) continue;
+      const solid = t === 2 ? 2 : t === 13 ? 1 : 0, flat = WFLAT.has(name);
+      if (solid === 2) put(NSV(name, v), cx + Math.round(jx / 2), by + 2, { flip: fl });
+      else if (solid === 1) put(NSV(name, v), cx + jx / 2, by, { flip: fl });
+      else put(NSV(name, v), cx + jx, by - 3 + (t === 3 || t === 4 ? 2 : jy * .3), { flip: fl, shadow: false, flat });
+      const gl = WGLOW[name]; if (gl) LIGHTS.push([cx, by - 6, gl[1], gl[0]]);
+      continue;
+    }
+    if (t === 2 || t === 13) put(NSV(t === 2 ? 'Lichen boulder' : 'Hedge bush', v), cx, by + 1, { flip: fl });
+  }
+  for (const p of I.props) {
+    const cx = p.x * 16 + 8, by = p.y * 16 + 15;
+    if (p.k === 'portal' && p.style === 'cave') { put('Cave', cx, by - 2); LIGHTS.push([cx, by - 8, 8, 'fire']); }
+    else if (p.k === 'fire') { put('Campfire', cx, by); LIGHTS.push([cx, by - 6, 16, 'fire']); }
+    else if (p.k === 'sign') put('Signpost', cx, by);
+    else if (p.k === 'lamp') { put('Lamp post', cx, by + 1); LIGHTS.push([cx, by - 22, 10, 'lamp']); }
+  }
+  const objs = OBJ.sort((a, b) => (b.flat ? 1 : 0) - (a.flat ? 1 : 0) || a.y - b.y || a.x - b.x);
+  for (const b of objs) { const s = b.s; if (b.shadow) shadowAt(P, b.x, b.y - 1, Math.max(3, Math.min(14, s.w * .42)), Math.max(2, Math.min(5, s.w * .14)), (b.x + OX) * 7 + (b.y + OY)); P.blit(s, Math.round(b.x - s.w / 2), Math.round(b.y - s.h), b.flip); }
+  // 8. keep the middle
+  const M0 = I.margin * 16, N = (w - I.margin * 2) * 16, out = new Uint8ClampedArray(N * N * 4);
+  for (let y = 0; y < N; y++) out.set(P.d.subarray(((y + M0) * W + M0) * 4, ((y + M0) * W + M0 + N) * 4), y * N * 4);
+  const lights = LIGHTS.filter(l => l[0] >= M0 && l[1] >= M0 && l[0] < M0 + N && l[1] < M0 + N).map(l => [l[0] + OX, l[1] + OY, l[2], l[3]]);
+  return { w: N, h: N, d: out, lights };
+}
+// a walk-in roof for a building in the wilds, painted like the regions' roofs
+function paintRoofW(rf) {
+  const S = new Sprite(rf.w * 16, rf.h * 16 + 10, rf.x * 13 + rf.y);
+  roof3(S, 0, 2, rf.w * 16, rf.h * 16 + 4, rf.col, { tin: rf.kind === 'tin', gable: rf.kind === 'tin', dormers: rf.kind === 'tin' ? 0 : Math.floor(rf.w / 5) });
+  S.outline();
+  return { w: S.w, h: S.h, d: S.d };
+}
+
+  return { paintArea, composeArea, applyEdits, NS, NSV, TSTYLE, paintWorldWin, paintRoofW };
 }
 const PAINTED = PAINTER_FACTORY();
 
@@ -12082,7 +12434,7 @@ collideMove = (function (f0) {
   return function (map, o, dx, dy) {
     if (G && o === G.p && G.dev) {
       if (G.devSpeed) { dx *= 2.6; dy *= 2.6; }
-      if (G.noclip) { o.x = Math.max(TS * .6, Math.min(map.w * TS - TS * .6, o.x + dx)); o.y = Math.max(TS * .6, Math.min(map.h * TS - TS * .6, o.y + dy)); return true; }
+      if (G.noclip) { if (map.world) { o.x += dx; o.y += dy; return true; } o.x = Math.max(TS * .6, Math.min(map.w * TS - TS * .6, o.x + dx)); o.y = Math.max(TS * .6, Math.min(map.h * TS - TS * .6, o.y + dy)); return true; }
     }
     return f0(map, o, dx, dy);
   };
@@ -12330,6 +12682,1259 @@ openControls = (function (f0) {
   css.textContent = '#rotate{position:fixed;inset:0;z-index:20;background:#03050c;color:#fff4dc;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;font:600 18px "Pixelify Sans",monospace;text-align:center;padding:24px}#rotate div{font-size:56px;color:#35e0c8}#rotate p{margin:0}@media (orientation:portrait) and (pointer:coarse){#rotate{display:flex}}';
   document.head.appendChild(css); document.body.appendChild(d);
 })();
+// phones close apps without warning: save whenever the game goes to the background, and every minute while playing
+addEventListener('visibilitychange', () => { if (document.hidden && ST === 'play') autosave(); });
+addEventListener('pagehide', () => { if (ST === 'play') autosave(); });
+setInterval(() => { if (ST === 'play' && !document.hidden) autosave(); }, 60000);
+
+// ================= v2.0 ENDLESS WORLD: the generator =================
+// The world is made of 16x16-tile chunks generated on demand from one seed. Everything here is a pure
+// function of (seed, tile x, tile y), so a chunk always comes back the same and needs no saving unless
+// the player changes it. The game thread composes the result with the story regions, roads and structures.
+const WG = (function () {
+  const CS = 16;
+  let S = 1;   // world seed
+  // integer hash -> [0,1). No lattice period, so nothing repeats however far you walk.
+  function ih(x, y, s) {
+    let h = Math.imul(x | 0, 0x27d4eb2d) ^ Math.imul(y | 0, 0x165667b1) ^ Math.imul((s + S) | 0, 0x9e3779b9);
+    h = Math.imul(h ^ (h >>> 15), 0x85ebca6b); h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35); h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  }
+  function vn(x, y, s) {
+    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const a = ih(xi, yi, s), b = ih(xi + 1, yi, s), c = ih(xi, yi + 1, s), d = ih(xi + 1, yi + 1, s);
+    return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+  }
+  function fbm(x, y, s, o = 3) { let v = 0, a = .5, f = 1, n = 0; for (let i = 0; i < o; i++) { v += a * vn(x * f, y * f, s + i * 131); n += a; a *= .5; f *= 2.03; } return v / n; }
+  const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+  // ---------------- biomes ----------------
+  const B = { MEADOW: 0, FOREST: 1, DESERT: 2, BADLANDS: 3, MARSH: 4, JUNK: 5, SNOW: 6, DEAD: 7, BEACH: 8, OCEAN: 9, CRYSTAL: 10 };
+  const BIOMES = [
+    { key: 'meadow', name: 'Wildflower Meadows', cliff: .9, lake: .30, river: 1, dens: .05, flora: .16, tier: 0 },
+    { key: 'forest', name: 'The Pine Wilds', cliff: .8, lake: .31, river: 1, dens: .19, flora: .14, tier: .3 },
+    { key: 'desert', name: 'The Sun-Bleached Dunes', cliff: .56, lake: .15, river: 0, dens: .045, flora: .07, tier: .2 },
+    { key: 'badlands', name: 'Redrock Badlands', cliff: .3, lake: .14, river: 0, dens: .06, flora: .07, tier: .6 },
+    { key: 'marsh', name: 'The Drowned Fens', cliff: 1.2, lake: .44, river: 1, dens: .14, flora: .2, tier: .5 },
+    { key: 'junk', name: 'The Rust Wastes', cliff: .82, lake: .30, river: 0, dens: .09, flora: .08, tier: .8 },
+    { key: 'snow', name: 'The Sugar Tundra', cliff: .52, lake: .33, river: 1, dens: .12, flora: .09, tier: .9 },
+    { key: 'dead', name: 'The Withered Woods', cliff: .62, lake: .31, river: 1, dens: .11, flora: .12, tier: 1.2 },
+    { key: 'beach', name: 'The Salt Coast', cliff: 1.2, lake: 0, river: 0, dens: .025, flora: .08, tier: .2 },
+    { key: 'ocean', name: 'Open Sea', cliff: 1.2, lake: 0, river: 0, dens: 0, flora: 0, tier: 0 },
+    { key: 'crystal', name: 'The Crash Fields', cliff: .5, lake: .27, river: 0, dens: .07, flora: .1, tier: 2 },
+  ];
+  // the story map: regions, authored seas and forced-biome sites (set by the game at world start)
+  let SPEC = { regions: [], seas: [], sites: [] };
+  const HOME = [22, 16];
+  const rectDist = (r, x, y) => Math.hypot(Math.max(r.x - x, 0, x - (r.x + r.w)), Math.max(r.y - y, 0, y - (r.y + r.h)));
+  function inSea(s, x, y) {
+    if (s.kind === 'ell') { const n = (vn(x / 14, y / 14, 77) - .5) * .22; return Math.hypot((x - s.x) / s.rx, (y - s.y) / s.ry) + n < 1; }
+    if (s.kind === 'band') { if (x < s.x0 || x > s.x1) return false; const top = s.y0 + (vn(x / 11, 3, 78) - .5) * 3 + Math.max(0, (s.x0 + 18 - x)) * .0 , bot = s.y1 + (vn(x / 13, 9, 79) - .5) * 3; const e0 = Math.min(x - s.x0, s.x1 - x); return y > top + Math.max(0, 6 - e0) && y < bot - Math.max(0, 6 - e0); }
+    return false;
+  }
+  function seaAt(x, y) { for (const s of SPEC.seas) if (inSea(s, x, y)) return s; return null; }
+  function climate(x, y) {
+    const wx = x + (vn(x / 24, y / 24, 11) - .5) * 30 + (vn(x / 4.3, y / 4.3, 13) - .5) * 7, wy = y + (vn(x / 24 + 40, y / 24, 12) - .5) * 30 + (vn(x / 4.3 + 9, y / 4.3, 14) - .5) * 7;
+    return {
+      heat: fbm(wx / 250, wy / 250, 101) + Math.max(-.16, Math.min(.16, wy / 1300)),
+      moist: fbm(wx / 220 + 50, wy / 220, 202), blight: fbm(wx / 190, wy / 190, 303), scrap: fbm(wx / 180, wy / 180, 404),
+      cryst: fbm(wx / 170, wy / 170, 505), cont: fbm(wx / 650, wy / 650, 606), dc: Math.hypot(x - HOME[0], y - HOME[1]),
+    };
+  }
+  function biomeAt(x, y) {
+    if (seaAt(x, y)) return B.OCEAN;
+    // story regions and boss sites pull the land around them toward their own biome
+    let best = -1, bd = 1;
+    const fine = (vn(x / 3.1, y / 3.1, 23) - .5) * .22;
+    for (let i = 0; i < SPEC.sites.length; i++) { const f = SPEC.sites[i], jag = (vn(x / 16 + i * 37.3, y / 16 - i * 11.7, 21) - .5) * .55 + fine; const d = (f.rect ? rectDist(f, x, y) : Math.hypot(x - f.x, y - f.y)) / f.r + jag; if (d < bd) { bd = d; best = f.b; } }
+    if (best >= 0) return best;
+    const c = climate(x, y);
+    if (c.dc > 220 && c.cont < .335) return B.OCEAN;
+    if (c.dc > 220 && c.cont < .36) return B.BEACH;
+    if (c.dc > 380 && c.cryst > .665) return B.CRYSTAL;
+    if (c.scrap > .7 && c.dc > 140) return B.JUNK;
+    if (c.blight > .7 && c.dc > 140) return B.DEAD;
+    if (c.heat < .35) return B.SNOW;
+    if (c.heat < .42) return c.moist > .4 ? B.FOREST : B.SNOW;
+    if (c.heat > .6) return c.moist < .44 ? B.DESERT : c.moist < .56 ? B.BADLANDS : B.MARSH;
+    if (c.moist > .61) return B.MARSH;
+    if (c.heat > .54 && c.moist < .42) return B.BADLANDS;
+    if (c.moist > .5) return B.FOREST;
+    return B.MEADOW;
+  }
+  // ---------------- terrain ----------------
+  const level = (x, y) => Math.floor(fbm(x / 72, y / 72, 707) * 9 + (vn(x / 9, y / 9, 708) - .5) * .5);
+  // objects: [sprite name, solid tile (2 wall, 13 low obstacle, 0 walk-through), weight]
+  const OBJ = [null];
+  const OBJI = {};
+  const objId = (name, solid, sh) => { if (OBJI[name] != null) return OBJI[name]; OBJ.push({ name, solid, sh: sh || 0 }); return (OBJI[name] = OBJ.length - 1); };
+  // per biome: big solid things, small obstacles, flora you walk through, things that sit on water
+  const SET = {
+    meadow: { big: [['Meadow oak', 3], ['Meadow birch', 2], ['Lichen boulder', 1]], low: [['Hedge bush', 2]], flora: [['Clover patch', 3], ['Poppy tuft', 2], ['Daisy tuft', 2], ['Wheat tuft', 1]] },
+    forest: { big: [['Spruce tall', 3], ['Spruce small', 2], ['Fir', 2], ['Lichen boulder', .5]], low: [['Fallen log', 1], ['Mossy stump', 1]], flora: [['Bracken', 3], ['Forest mushrooms', 1], ['Bluebells', 1.5]] },
+    desert: { big: [['Joshua tree', 1], ['Dune rock', 1.5]], low: [['Saguaro tall', 2], ['Saguaro twin', 1.2], ['Globe cactus', 1.5]], flora: [['Desert grass', 3], ['Bleached ribs', .6], ['Desert sage', 1.5]] },
+    badlands: { big: [['Hoodoo', 2], ['Red boulder', 2], ['Mesquite', 1.4]], low: [['Agave', 1.5]], flora: [['Red scrub', 3], ['Steer skull', .5]] },
+    marsh: { big: [['Swamp cypress', 3], ['Mangrove', 2]], low: [['Bog stump', 1.2]], flora: [['Cattail clump', 3], ['Swamp iris', 1.5], ['Glow toadstool', .8]], wet: [['Bog lily', 1]] },
+    junk: { big: [['Rust car', 2], ['Scrap tower', 1.2], ['Satellite dish', .5]], low: [['Tire heap', 2], ['Dead robot', .8]], flora: [['Junk weeds', 3], ['Bolt scatter', 1.5]] },
+    snow: { big: [['Frost pine', 3], ['Frost pine small', 2], ['Snow boulder', 1], ['Ice spire', .6]], low: [['Peppermint stick', 1], ['Gumdrop bush', 1]], flora: [['Frost grass', 3], ['Snow tuft', 1]] },
+    dead: { big: [['Twisted oak', 3], ['Hanging willow', 1.5]], low: [['Old headstone', 1.2], ['Thorn bush', 1.5]], flora: [['Ghost grass', 3], ['Violet shroom', 1.2], ['Bone heap', .6]] },
+    beach: { big: [['Palm', 2], ['Palm lean', 1.5], ['Beach rock', 1]], low: [], flora: [['Dune grass', 3], ['Shells', 1.2]] },
+    ocean: { big: [], low: [], flora: [] },
+    crystal: { big: [['Crystal spire', 2], ['Meteor rock', 1.5]], low: [['Crystal cluster', 2], ['Alien pod', 1.2]], flora: [['Glow moss', 3], ['Crystal shards', 1.5]] },
+  };
+  const SETI = {};
+  for (const k in SET) {
+    const t = SET[k], mk = (arr, solid, sh) => arr.map(([n, w]) => [objId(n, solid, sh), w]);
+    SETI[k] = { big: mk(t.big, 2, 1), low: mk(t.low, 13, 2), flora: mk(t.flora, 0, 0), wet: mk(t.wet || [], 0, 0) };
+  }
+  const wpickH = (arr, r) => { let s = 0; for (const a of arr) s += a[1]; let v = r * s; for (const a of arr) { v -= a[1]; if (v <= 0) return a[0]; } return arr[arr.length - 1][0]; };
+  // ---------------- one chunk ----------------
+  // t: tile type, s: style (1 cliff), b: biome, h: terrain level, o: object
+  function genChunk(cx, cy) {
+    const N = CS * CS, t = new Uint8Array(N), s = new Uint8Array(N), b = new Uint8Array(N), h = new Uint8Array(N), o = new Uint8Array(N);
+    const x0 = cx * CS, y0 = cy * CS;
+    for (let j = 0; j < CS; j++) for (let i = 0; i < CS; i++) {
+      const x = x0 + i, y = y0 + j, k = j * CS + i;
+      const bi = biomeAt(x + .5, y + .5), BI = BIOMES[bi]; b[k] = bi;
+      const lv = level(x, y); h[k] = Math.max(0, Math.min(15, lv));
+      let tt = 0;
+      if (bi === B.OCEAN) tt = 3;
+      else if (bi === B.BEACH) tt = 14;
+      else {
+        // lakes (deep in the middle), rivers (always shallow), frozen in the tundra
+        const lw = fbm(x / 64, y / 64, 909);
+        if (lw < BI.lake) tt = lw < BI.lake - .045 && bi !== B.SNOW ? 3 : 4;
+        else if (BI.river) { const rv = Math.abs(fbm(x / 170, y / 170, 1010) - .5); if (rv < .011) tt = 4; }
+        if (tt && bi === B.SNOW) tt = 15;
+        if (!tt && bi === B.BADLANDS && Math.abs(fbm(x / 90, y / 90, 1111) - .5) < .011) tt = 17;
+        // south-facing terrace faces are cliffs; the other sides of a plateau are gentle slopes you can walk
+        if (!tt && lv > level(x, y + 1) && vn(x / 30, y / 30, 808) > BI.cliff && biomeAt(x + .5, y + 1.5) !== B.OCEAN) { tt = 6; s[k] = 1; }
+      }
+      t[k] = tt;
+      if (tt === 0 || (tt === 14 && bi === B.BEACH)) {
+        const set = SETI[BI.key], df = fbm(x / 26, y / 26, 1212, 2);
+        const chance = BI.dens * (.35 + 1.9 * sstep(.38, .72, df));
+        const r1 = ih(x, y, 1313);
+        if (r1 < chance && (set.big.length || set.low.length)) {
+          const useLow = !set.big.length || (set.low.length && ih(x, y, 1515) < .3);
+          const id = wpickH(useLow ? set.low : set.big, ih(x, y, 1616)); o[k] = id; t[k] = OBJ[id].solid;
+        } else if (ih(x, y, 1414) < BI.flora * (.6 + df) && set.flora.length) o[k] = wpickH(set.flora, ih(x, y, 1717));
+      } else if (tt === 4 && SETI[BI.key].wet.length && ih(x, y, 1818) < .12) o[k] = wpickH(SETI[BI.key].wet, ih(x, y, 1919));
+    }
+    return { cx, cy, t, s, b, h, o };
+  }
+  return {
+    CS, B, BIOMES, OBJ, OBJI, objId, SET, SETI, ih, vn, fbm, sstep, biomeAt, climate, level, genChunk, seaAt, rectDist, HOME,
+    setSeed(v) { S = v | 0; }, get seed() { return S; },
+    setSpec(sp) { SPEC = sp; }, get spec() { return SPEC; },
+  };
+})();
+
+// ================= v2.0 ENDLESS WORLD: the world model =================
+// One endless map ('world') in tile coordinates that run in every direction (negative too). Port Brine sits at 0,0 and
+// the story regions are placed around it exactly as authored (two are mirrored top-to-bottom so their entrances face
+// their neighbours). Between and beyond them the generator (36_worldgen.js) makes biomes, rivers, cliffs and lakes.
+// The world is composed per 16x16 chunk: generated terrain -> tree belts round the regions -> roads -> structures
+// (bandit hideouts, caves, Bill's canyon, Mike's fortress) -> the regions' own tiles -> gates and player edits.
+const WREG = {
+  town: { x: 0, y: 0, b: 'MEADOW', r: 26 },
+  dustbowl: { x: 74, y: -40, b: 'DESERT', r: 34 },
+  marsh: { x: 82, y: 40, flip: 1, b: 'MARSH', r: 30 },
+  junkyard: { x: 172, y: 40, b: 'JUNK', r: 30 },
+  ruins: { x: -30, y: -92, b: 'SNOW', r: 38 },
+  graveyard: { x: -14, y: 40, b: 'DEAD', r: 30 },
+  docks: { x: 246, y: 30, flip: 1, b: 'OCEAN', r: 6 },
+};
+const WREGK = Object.keys(WREG);
+for (const k of WREGK) { const R0 = WREG[k]; R0.w = AREAS[k].w; R0.h = AREAS[k].h; R0.key = k; R0.i = WREGK.indexOf(k) + 1; }
+const W_FLIP = { marsh: 1, docks: 1 };
+const W_SEAS = [{ kind: 'band', x0: -90, x1: 80, y0: 31, y1: 39.5 }, { kind: 'ell', x: 263, y: 100, rx: 31, ry: 66 }];
+
+// ---------- coordinates ----------
+// "authored" region coordinates are the ones written in the region builders, the arenas' back doors and old saves.
+// Mirrored regions store their data already flipped, so world = region origin + data coordinates.
+function wA2W(key, tx, ty) { const R0 = WREG[key]; return [R0.x + tx, R0.y + (R0.flip ? R0.h - 1 - ty : ty)]; }
+function wA2Wpx(key, px, py) { const R0 = WREG[key]; return [R0.x * TS + px, R0.y * TS + (R0.flip ? R0.h * TS - py : py)]; }
+function wD2W(key, tx, ty) { const R0 = WREG[key]; return [R0.x + tx, R0.y + ty]; }
+function wRegAt(x, y) { for (const k of WREGK) { const R0 = WREG[k]; if (x >= R0.x && y >= R0.y && x < R0.x + R0.w && y < R0.y + R0.h) return R0; } return null; }
+function wRectDist(R0, x, y) { return Math.hypot(Math.max(R0.x - x, 0, x - (R0.x + R0.w - 1)), Math.max(R0.y - y, 0, y - (R0.y + R0.h - 1))); }
+
+// ---------- mirrored regions: flip every piece of the generated data once ----------
+function wFlipMap(mp) {
+  const w = mp.w, h = mp.h, m = mp.m, def = mp.def, A = mp.pA, fy = y => h - 1 - y;
+  const swapRows = arr => { for (let y = 0; y < h >> 1; y++) for (let x = 0; x < w; x++) { const a = y * w + x, b = fy(y) * w + x, t = arr[a]; arr[a] = arr[b]; arr[b] = t; } };
+  swapRows(m); if (mp.reach) swapRows(mp.reach);
+  const reKey = obj => { if (!obj) return; const ent = Object.entries(obj); for (const k of Object.keys(obj)) delete obj[k]; for (const [k, v] of ent) { const [x, y] = k.split(',').map(Number); obj[x + ',' + fy(y)] = v; } };
+  reKey(def.tstyle);
+  const seen = new Set(), fp = o => { if (!o || seen.has(o)) return; seen.add(o); if (typeof o.y === 'number') o.y = fy(o.y); };
+  for (const p of def.props || []) fp(p);
+  for (const p of PROPS[mp.key] || []) fp(p);
+  if (A) { for (const p of A.props || []) fp(p); for (const p of A.paintProps || []) fp(p); }
+  for (const s of def.spawns || []) { fp(s); if (s.opt && s.opt.lake) s.opt.lake = [s.opt.lake[0], fy(s.opt.lake[1])]; }
+  for (const t of def.triggers || []) fp(t);
+  for (const c of def.camps || []) fp(c);
+  const cs = new Set(); for (const c of [...(mp.chestSpots || []), ...(def.chestList || [])]) { if (cs.has(c)) continue; cs.add(c); c[1] = fy(c[1]); }
+  const sideF = s => s === 's' ? 'n' : s === 'n' ? 's' : s;
+  for (const z of def.exitZones || []) { for (const t of z.tiles) t[1] = fy(t[1]); z.spawn = [z.spawn[0], fy(z.spawn[1])]; z.ex = Object.assign({}, z.ex, { side: sideF(z.ex.side) }); }
+  for (const rf of def.roofsB || []) {
+    const ny = h - (rf.y + rf.h);
+    // keep the building upright: undo the row flip inside its own footprint
+    for (let j = 0; j < rf.h >> 1; j++) for (let i = 0; i < rf.w; i++) { const a = (ny + j) * w + rf.x + i, b = (ny + rf.h - 1 - j) * w + rf.x + i, t = m[a]; m[a] = m[b]; m[b] = t; }
+    rf.y = ny;
+  }
+  if (A) {
+    for (const e of A.exits || []) e.side = sideF(e.side);
+    A.decor = (A.decor || []).map(([n, x, y, f]) => { const ty = Math.floor(y / 16); return [n, x, fy(ty) * 16 + (y - ty * 16), f]; });
+    for (const s of ['clear', 'keep']) if (A[s] instanceof Set) A[s] = new Set([...A[s]].map(k => { const [x, y] = k.split(',').map(Number); return x + ',' + fy(y); }));
+  }
+  mp.flipped = 1;
+}
+genArea = (function (f0) {
+  return function (key) {
+    const mp = f0(key);
+    try {
+      // Bill's boulder and Mike's fortress door now live out in the endless world
+      if (key === 'dustbowl' || key === 'junkyard') {
+        const drop = p => (key === 'dustbowl' && (p.k === 'boulder' || p.k === 'bigboulder')) || (key === 'junkyard' && p.k === 'portal' && p.to === 'arena_mike');
+        if (PROPS[key]) PROPS[key] = PROPS[key].filter(p => !drop(p));
+        if (mp.def.props) mp.def.props = mp.def.props.filter(p => !drop(p));
+        if (mp.pA) { mp.pA.props = (mp.pA.props || []).filter(p => !drop(p)); mp.pA.paintProps = (mp.pA.paintProps || []).filter(p => !drop(p)); }
+        if (key === 'junkyard') { // the old fortress gate becomes a dead end of crushed cars
+          for (let x = 30; x <= 34; x++) for (let y = 74; y <= 75; y++) { mp.m[y * mp.w + x] = T_BORD; mp.def.tstyle[x + ',' + y] = 'carstack'; }
+        }
+      }
+      if (W_FLIP[key]) wFlipMap(mp);
+    } catch (e) { console.error('world: region prep failed for ' + key, e); }
+    return mp;
+  };
+})(genArea);
+
+// ---------- the world ----------
+const WORLD = {
+  ready: false, seed: 1, map: null, sites: {}, roads: new Map(), gates: [], props: [], chests: [], stamps: new Map(), cells: new Map(), crews: [], roofs: [],
+  mods: new Map(),   // player changes to the world: tileKey -> tile (Phase 3 building)
+  regTiles: {},      // region key -> its generated map (data only; painted separately)
+};
+const WC = new Map(), WB = new Map();
+let WFRAME = 0, WLK = NaN, WLC = null;
+const wKey = (cx, cy) => (cx + 32768) * 65536 + (cy + 32768);
+const wTKey = (x, y) => x + ',' + y;
+function wRegionMap(key) { if (!MAPS[key]) MAPS[key] = genArea(key); return MAPS[key]; }
+// base terrain (generator only), cached per chunk
+function wBase(cx, cy) { const k = wKey(cx, cy); let c = WB.get(k); if (!c) { c = WG.genChunk(cx, cy); WB.set(k, c); if (WB.size > 9000) { let n = 0; for (const kk of WB.keys()) { WB.delete(kk); if (++n > 3000) break; } } } return c; }
+function wBaseTile(x, y) { return wBase(x >> 4, y >> 4).t[((y & 15) << 4) | (x & 15)]; }
+function wBaseBiome(x, y) { return wBase(x >> 4, y >> 4).b[((y & 15) << 4) | (x & 15)]; }
+
+// A* road between two world tiles over the generated terrain (regions are walls)
+function wRoad(a, b, avoid) {
+  const pad = 46, x0 = Math.min(a[0], b[0]) - pad, y0 = Math.min(a[1], b[1]) - pad, w = Math.abs(a[0] - b[0]) + pad * 2 + 1, h = Math.abs(a[1] - b[1]) + pad * 2 + 1;
+  const N = w * h, g = new Float32Array(N).fill(1e9), from = new Int32Array(N).fill(-1), done = new Uint8Array(N);
+  const cost = (x, y) => {
+    if (avoid(x, y)) return -1;
+    const t = wBaseTile(x, y); let c = 1 + WG.vn(x / 7, y / 7, 4242) * 1.6;
+    if (t === T_WATER) c += 7; else if (t === T_SHAL || t === T_ICE) c += 2; else if (t === T_BORD) c += 9; else if (t === T_CHASM) c += 8; else if (t === T_WALL || t === T_ALT) c += .6;
+    return c;
+  };
+  const heap = [], push = (i, f) => { heap.push([f, i]); let k = heap.length - 1; while (k > 0) { const p = (k - 1) >> 1; if (heap[p][0] <= heap[k][0]) break; [heap[p], heap[k]] = [heap[k], heap[p]]; k = p; } };
+  const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let k = 0; for (;;) { const l = k * 2 + 1, r = l + 1; let m = k; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === k) break; [heap[m], heap[k]] = [heap[k], heap[m]]; k = m; } } return top; };
+  const idx = (x, y) => (y - y0) * w + (x - x0), s = idx(a[0], a[1]), e = idx(b[0], b[1]);
+  g[s] = 0; push(s, 0);
+  while (heap.length) {
+    const [, i] = pop(); if (done[i]) continue; done[i] = 1; if (i === e) break;
+    const x = x0 + i % w, y = y0 + ((i / w) | 0);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy; if (nx < x0 || ny < y0 || nx >= x0 + w || ny >= y0 + h) continue;
+      const j = idx(nx, ny); if (done[j]) continue;
+      const c = (nx === b[0] && ny === b[1]) ? 1 : cost(nx, ny); if (c < 0) continue;
+      const ng = g[i] + c; if (ng < g[j]) { g[j] = ng; from[j] = i; push(j, ng + (Math.abs(nx - b[0]) + Math.abs(ny - b[1])) * 1.05); }
+    }
+  }
+  if (from[e] < 0 && e !== s) return null;
+  const out = []; for (let i = e; i >= 0; i = from[i]) out.push([x0 + i % w, y0 + ((i / w) | 0)]);
+  return out.reverse();
+}
+function wMarkRoad(x, y, kind) {
+  const k = wKey(x >> 4, y >> 4); let m = WORLD.roads.get(k); if (!m) WORLD.roads.set(k, m = new Map());
+  const i = ((y & 15) << 4) | (x & 15); if (!m.has(i) || kind === 2) m.set(i, kind);
+}
+function wIsRoad(x, y) { const m = WORLD.roads.get(wKey(x >> 4, y >> 4)); return !!(m && m.has(((y & 15) << 4) | (x & 15))); }
+
+// ---------- structures: memoised per cell, stamped into chunks ----------
+// A stamp is a little area built with the game's own layout API (openCamp, addHouse, ...) and copied into the world.
+function wStampArea(x0, y0, w, h, seed, build) {
+  const t = new Uint8Array(w * h), ch = new Uint8Array(w * h);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { let v = wBaseTile(x0 + i, y0 + j); if (v === T_WALL || v === T_ALT || v === T_DECO) v = T_G; t[j * w + i] = v; }
+  const def = { props: [], spawns: [], chestList: [], tstyle: {}, marks: {}, triggers: [], roofsB: [], camps: [] };
+  const set = (x, y, v) => { if (x >= 0 && y >= 0 && x < w && y < h) { t[y * w + x] = v; ch[y * w + x] = 1; } };
+  const get = (x, y) => (x < 0 || y < 0 || x >= w || y >= h) ? T_BORD : t[y * w + x];
+  const rng = mulberry32(seed), A = layoutAPI(set, get, rng, def, w, h);
+  build(A, rng, def, set, get);
+  const st = {}; for (const k in def.tstyle) { const [x, y] = k.split(',').map(Number); st[wTKey(x0 + x, y0 + y)] = def.tstyle[k]; ch[y * w + x] = 1; }
+  const S = { x0, y0, w, h, t, ch, st, def };
+  for (let cy = y0 >> 4; cy <= (y0 + h - 1) >> 4; cy++) for (let cx = x0 >> 4; cx <= (x0 + w - 1) >> 4; cx++) { const k = wKey(cx, cy); let l = WORLD.stamps.get(k); if (!l) WORLD.stamps.set(k, l = []); l.push(S); WC.delete(k); }
+  for (const p of def.props) WORLD.props.push(Object.assign(p, { x: x0 + p.x, y: y0 + p.y, _w: 1 }));
+  def.chestList.forEach((c, i) => WORLD.chests.push({ x: x0 + c[0], y: y0 + c[1], min: c[2] | 0, id: 'w' + seed + ':' + i }));
+  for (const rf of def.roofsB) WORLD.roofs.push(Object.assign(rf, { x: x0 + rf.x, y: y0 + rf.y, wroof: 1 }));
+  return S;
+}
+function wNearRegion(x, y, d) { for (const k of WREGK) if (wRectDist(WREG[k], x, y) < d) return true; return false; }
+function wNearRoad(x, y, d) { for (let j = -d; j <= d; j += 2) for (let i = -d; i <= d; i += 2) if (wIsRoad(x + i, y + j)) return true; return false; }
+function wLandOK(x, y, r) {
+  for (let j = -r; j <= r; j += 2) for (let i = -r; i <= r; i += 2) { const b = wBaseBiome(x + i, y + j), t = wBaseTile(x + i, y + j); if (b === WG.B.OCEAN || t === T_WATER || t === T_BORD || t === T_CHASM) return false; }
+  return true;
+}
+const HIDE_CELL = 84, CAVE_CELL = 58;
+const HIDE_NAMES = ['Rattlesnake', 'Buzzard', 'Coyote', 'Black Hat', 'Dead Man\'s', 'Red Bandana', 'Crooked Mile', 'Gravel', 'Sidewinder', 'Tumbleweed', 'Rustbucket', 'Hangman\'s', 'Lonesome', 'Two-Bit', 'Copperhead', 'Snake Eye'];
+const BIOME_CREW = { meadow: { thug: 2, bandit: 3 }, forest: { bandit: 3, thug: 1, bear: .3 }, desert: { bandit: 3, thug: 2, bomber: 1 }, badlands: { bandit: 3, bomber: 2, gunner: 1 }, marsh: { bandit: 3, croc: .5, bomber: 1 }, junk: { bandit: 2, tinhound: 2, scrapjaw: 1 }, snow: { skier: 3, bandit: 2, jugg: .6 }, dead: { bandit: 2, zombie: 2, bomber: 1 }, beach: { bandit: 3, thug: 2 }, crystal: { bandit: 2, jugg: 1, bomber: 1 } };
+function wCell(kind, i, j) {
+  const ck = kind + i + ',' + j; if (WORLD.cells.has(ck)) return WORLD.cells.get(ck);
+  WORLD.cells.set(ck, null);
+  const C = kind === 'h' ? HIDE_CELL : CAVE_CELL, r = (s) => WG.ih(i, j, s + (kind === 'h' ? 7100 : 7300));
+  if (r(1) > (kind === 'h' ? .62 : .5)) return null;
+  const cx = i * C + 14 + Math.floor(r(2) * (C - 28)), cy = j * C + 14 + Math.floor(r(3) * (C - 28));
+  const dHome = Math.hypot(cx - WG.HOME[0], cy - WG.HOME[1]);
+  if (dHome < (kind === 'h' ? 78 : 60) || wNearRegion(cx, cy, 26) || wNearRoad(cx, cy, 9) || !wLandOK(cx, cy, kind === 'h' ? 10 : 4)) return null;
+  for (const s of Object.values(WORLD.sites)) if (Math.hypot(s.x - cx, s.y - cy) < 34) return null;
+  const bi = WG.BIOMES[wBaseBiome(cx, cy)], seed = Math.floor(r(4) * 1e9);
+  let out;
+  if (kind === 'c') out = wMakeCave(cx, cy, i, j, bi, seed);
+  else out = wMakeHideout(cx, cy, i, j, bi, seed, r(5) < .5 ? 'camp' : 'compound');
+  WORLD.cells.set(ck, out); return out;
+}
+function wMakeHideout(cx, cy, i, j, bi, seed, type) {
+  const name = HIDE_NAMES[Math.floor(WG.ih(i, j, 7400) * HIDE_NAMES.length)] + (type === 'camp' ? ' Camp' : ' Hideout'), crew = BIOME_CREW[bi.key] || BIOME_CREW.meadow;
+  const id = 'h' + i + ',' + j, cold = bi.key === 'snow', wet = bi.key === 'marsh' || bi.key === 'beach';
+  const S = wStampArea(cx - 14, cy - 12, 28, 24, seed, (A, rng, def) => {
+    if (type === 'camp') {
+      const g = rng() * 6.283;
+      openCamp(A, 14, 12, 8 + rng() * 2, 6.5 + rng() * 1.5, [g, g + 2.4 + rng()], { tents: 2 + Math.floor(rng() * 3), clutter: 3 + Math.floor(rng() * 3), crew, n: [3, 5], short: name, chest: 1 + (rng() < .3 ? 1 : 0), name, mat: rng() < .4 ? 'fence' : 'mix' });
+    } else {
+      // a walled compound: a yard behind a stone or log wall, two or three huts with roofs, crates, a chest inside
+      const wallS = cold || wet ? 'fence' : 'stonewall', houseW = cold || wet ? 'woodwall' : 'sandstone';
+      const ring = []; for (let y = 2; y < 22; y++) for (let x = 2; x < 26; x++) if (x === 2 || y === 2 || x === 25 || y === 21) ring.push([x, y]);
+      for (let y = 3; y < 21; y++) for (let x = 3; x < 25; x++) A.t(x, y, cold ? T_G : T_SAND);
+      const gate = Math.floor(rng() * 4), gpos = 10 + Math.floor(rng() * 4);
+      for (const [x, y] of ring) { const side = y === 21 ? 0 : x === 25 ? 1 : y === 2 ? 2 : 3, along = side % 2 ? y : x; if (side === gate && Math.abs(along - gpos) <= 1) { A.t(x, y, cold ? T_G : T_SAND); continue; } A.style(x, y, wallS, T_WALL); }
+      const roof = pick(['#8a4a2a', '#6a5a4a', '#7a3a2a', '#5a4a3a', '#8a6a3a']);
+      const houses = [[4, 4, 8, 6], [15, 4, 8, 6], [5, 13, 7, 6], [15, 13, 8, 6]].sort(() => rng() - .5).slice(0, 2 + (rng() < .5 ? 1 : 0));
+      for (const [x, y, w, h] of houses) addHouse(A, x, y, w, h, { wall: houseW, floor: 'plank', roof, roofKind: rng() < .3 ? 'tin' : 'tile', doors: [[y < 10 ? 's' : 'n', Math.floor(w / 2) - 1]] });
+      const [hx, hy, hw, hh] = houses[0]; A.chest(hx + 2, hy + 2, 1 + (rng() < .35 ? 1 : 0));
+      if (houses[1]) { const [x2, y2] = houses[1]; A.style(x2 + 1, y2 + 1, 'bunk', T_ALT); A.style(x2 + 2, y2 + 1, 'weaponrack', T_ALT); }
+      for (let k = 0; k < 5; k++) { const x = 4 + Math.floor(rng() * 20), y = 11 + Math.floor(rng() * 2); if (A.get(x, y) === T_SAND || A.get(x, y) === T_G) A.style(x, y, pick(['crate', 'barrel', 'sandbags', 'boards']), T_ALT); }
+      A.prop({ k: 'fire', x: 13, y: 11 });
+      A.prop({ k: 'sign', x: gate === 0 ? gpos + 2 : 14, y: gate === 0 ? 22 : 22, t: name.toUpperCase() + '\nKeep out. We mean it.' });
+      A.spawn(13, 10, crew, [3, 5], {});
+      for (const [x, y, w, h] of houses.slice(1)) A.spawn(x + (w >> 1), y + (h >> 1), crew, [1, 2], {});
+    }
+  });
+  const H = { kind: 'hideout', type, name, id, x: cx, y: cy, tier: bi.tier, S };
+  WORLD.crews.push(H);
+  return H;
+}
+function wMakeCave(cx, cy, i, j, bi, seed) {
+  const key = 'cave_' + i + '_' + j;
+  const S = wStampArea(cx - 4, cy - 3, 9, 6, seed, (A, rng) => {
+    // a rocky mound with a dark mouth on its south face
+    for (let y = 1; y <= 3; y++) for (let x = 1; x <= 7; x++) { const d = Math.hypot((x - 4) / 3.6, (y - 2.6) / 2); if (d < 1) A.style(x, y, 'rockwall', T_BORD); }
+    A.t(4, 4, T_G); A.t(3, 4, T_G); A.t(5, 4, T_G);
+    A.prop({ k: 'portal', to: key, x: 4, y: 3, label: 'the cave', style: 'cave', noPath: 1, wcave: [i, j] });
+    A.t(4, 3, T_G);
+  });
+  wCaveDef(key, cx, cy + 1, bi, seed);
+  return { kind: 'cave', key, x: cx, y: cy, S };
+}
+
+// ---------- story sites: Bill's canyon (northeast, red rock) and Mike's fortress (southeast, rust wastes) ----------
+function wPickSite(seed, a0, a1, r0, r1, sep) {
+  const rng = mulberry32(seed);
+  for (let k = 0; k < 400; k++) {
+    const a = a0 + rng() * (a1 - a0), rr = r0 + rng() * (r1 - r0), x = Math.round(WG.HOME[0] + Math.cos(a) * rr), y = Math.round(WG.HOME[1] + Math.sin(a) * rr);
+    if (wNearRegion(x, y, sep) || WG.seaAt(x, y)) continue;
+    let bad = false; for (let t = .15; t < 1; t += .05) { const px = Math.round(WG.HOME[0] + (x - WG.HOME[0]) * t), py = Math.round(WG.HOME[1] + (y - WG.HOME[1]) * t); if (WG.seaAt(px, py)) { bad = true; break; } const c = WG.climate(px, py); if (c.dc > 220 && c.cont < .36) { bad = true; break; } }
+    if (bad) continue;
+    return { x, y };
+  }
+  return { x: WG.HOME[0] + Math.round(Math.cos((a0 + a1) / 2) * r0), y: WG.HOME[1] + Math.round(Math.sin((a0 + a1) / 2) * r0) };
+}
+function wBuildSites() {
+  const S = WORLD.sites;
+  // Bill: a box canyon of red rock, the skull boulder at its back wall
+  const b = S.bill;
+  wStampArea(b.x - 9, b.y - 8, 19, 17, 501, (A, rng) => {
+    for (let y = 1; y < 16; y++) for (let x = 1; x < 18; x++) {
+      const d = Math.hypot((x - 9) / 8, (y - 8) / 7) + (rng() - .5) * .08;
+      if (d < .78) A.t(x, y, T_SAND); else if (d < 1 && !(y > 10 && Math.abs(x - 9) < 2.5)) A.style(x, y, 'sandcliff', T_BORD);
+      else if (d < 1) A.t(x, y, T_SAND);
+    }
+    for (let y = 13; y < 16; y++) for (let x = 7; x <= 11; x++) A.t(x, y, T_SAND);
+    A.prop({ k: 'boulder', x: 8, y: 2 }); A.t(8, 2, T_SAND); A.t(9, 2, T_SAND); A.t(8, 3, T_SAND); A.t(9, 3, T_SAND);
+    A.style(5, 6, 'skullrock', T_ALT); A.style(13, 9, 'barrel', T_ALT); A.style(12, 5, 'crate', T_ALT);
+    A.prop({ k: 'fire', x: 9, y: 9 });
+    A.spawn(9, 8, { bandit: 3, thug: 2 }, [3, 4], {});
+  });
+  const bp = WORLD.props.find(p => p.k === 'boulder'); if (bp) { ARENAS.arena_bill.back = ['world', bp.x, bp.y + 1]; S.bill.door = [bp.x, bp.y]; }
+  // Mike: a fortress of crushed cars, a welded door in the middle
+  const m = S.mike;
+  wStampArea(m.x - 11, m.y - 10, 23, 21, 502, (A, rng) => {
+    for (let y = 1; y < 20; y++) for (let x = 1; x < 22; x++) {
+      const d = Math.hypot((x - 11) / 10, (y - 10) / 9);
+      if (d < .82) A.t(x, y, T_G); else if (d < 1 && !(y > 12 && Math.abs(x - 11) < 2)) A.style(x, y, 'carstack', T_BORD); else if (d < 1) A.t(x, y, T_P);
+    }
+    for (let y = 2; y < 20; y++) A.t(11, y, T_P);
+    for (let x = 7; x <= 15; x++) for (let y = 3; y <= 5; y++) A.style(x, y, 'carstack', T_BORD);
+    A.t(11, 5, T_P); A.t(11, 4, T_P);
+    A.prop({ k: 'portal', to: 'arena_mike', x: 11, y: 5, label: "Mike's Scrap Fortress", style: 'cave', noPath: 1, cond: () => G.story >= 5, lock: 'A door of welded car doors. Painted on it: "MIKE\'S. NO VISITORS. NOT YET." (Mayor Gus will know when.)' });
+    for (const [x, y] of [[5, 9], [17, 9], [8, 14], [14, 14]]) A.style(x, y, pick(['tires', 'oilbarrel', 'scrap']), T_WALL);
+    A.prop({ k: 'fire', x: 7, y: 10 }); A.prop({ k: 'fire', x: 15, y: 11 });
+    A.prop({ k: 'sign', x: 13, y: 17, t: 'MIKE\'S SCRAP FORTRESS\nTrespassers will be RECYCLED.' });
+    A.spawn(11, 10, { tinhound: 2, scrapjaw: 1 }, [3, 4], {});
+    A.chest(16, 7, 1);
+  });
+  const mp = WORLD.props.find(p => p.to === 'arena_mike'); if (mp) { ARENAS.arena_mike.back = ['world', mp.x, mp.y]; S.mike.door = [mp.x, mp.y]; }
+}
+
+// ---------- the chunk: compose every layer ----------
+function wChunk(cx, cy) {
+  const k = wKey(cx, cy); let c = WC.get(k);
+  if (c) { c.used = WFRAME; return c; }
+  const b = wBase(cx, cy);
+  c = { cx, cy, t: Uint8Array.from(b.t), s: Uint8Array.from(b.s), b: b.b, h: b.h, o: Uint8Array.from(b.o), reg: new Uint8Array(256), st: null, used: WFRAME, ver: 0 };
+  const x0 = cx * 16, y0 = cy * 16, BI = WG.BIOMES;
+  // structures can start in neighbouring cells; make sure they exist before we stamp
+  if (WORLD.ready) for (const [kind, C] of [['h', HIDE_CELL], ['c', CAVE_CELL]]) {
+    const i0 = Math.floor((x0 - 30) / C), i1 = Math.floor((x0 + 46) / C), j0 = Math.floor((y0 - 30) / C), j1 = Math.floor((y0 + 46) / C);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) wCell(kind, i, j);
+  }
+  // regions nearby (belts and tiles)
+  const near = WREGK.map(kk => WREG[kk]).filter(R0 => x0 + 16 > R0.x - 6 && y0 + 16 > R0.y - 6 && x0 < R0.x + R0.w + 6 && y0 < R0.y + R0.h + 6);
+  if (near.length) for (let j = 0; j < 16; j++) for (let i = 0; i < 16; i++) {
+    const x = x0 + i, y = y0 + j, n = j * 16 + i;
+    let dm = 99; for (const R0 of near) dm = Math.min(dm, wRectDist(R0, x, y));
+    if (dm > 0 && dm < 1.5 + 3 * WG.vn(x / 6, y / 6, 4040)) {
+      const t = c.t[n];
+      if (t === T_G || t === T_SAND || (c.o[n] && WG.OBJ[c.o[n]].solid !== 2)) {
+        const set = WG.SETI[BI[c.b[n]].key];
+        if (set && set.big.length && WG.ih(x, y, 4141) < .78) { const id = set.big[Math.floor(WG.ih(x, y, 4242) * set.big.length)][0]; c.o[n] = id; c.t[n] = 2; }
+        else if (set && set.flora.length) { c.o[n] = set.flora[Math.floor(WG.ih(x, y, 4343) * set.flora.length)][0]; c.t[n] = t === T_SAND ? T_SAND : T_G; }
+      }
+    }
+  }
+  // roads
+  const rd = WORLD.roads.get(k);
+  if (rd) for (const [i, kind] of rd) { const t = c.t[i]; c.o[i] = 0; c.s[i] = 0; c.t[i] = (t === T_WATER || t === T_SHAL || t === T_ICE || t === T_CHASM || kind === 2) ? T_BRIDGE : T_P; }
+  // stamps
+  const sl = WORLD.stamps.get(k);
+  if (sl) for (const S of sl) for (let j = 0; j < 16; j++) for (let i = 0; i < 16; i++) {
+    const x = x0 + i, y = y0 + j, lx = x - S.x0, ly = y - S.y0; if (lx < 0 || ly < 0 || lx >= S.w || ly >= S.h) continue;
+    const n = j * 16 + i, q = ly * S.w + lx;
+    if (S.ch[q]) { c.t[n] = S.t[q]; c.o[n] = 0; c.s[n] = 0; const s = S.st[wTKey(x, y)]; if (s) (c.st || (c.st = {}))[n] = s; }
+    else if (c.o[n] && WG.OBJ[c.o[n]].solid) { c.o[n] = 0; c.t[n] = T_G; }   // nothing big growing inside a camp
+  }
+  // regions
+  for (const R0 of near) {
+    const mp = WORLD.regTiles[R0.key]; if (!mp) continue;
+    for (let j = 0; j < 16; j++) for (let i = 0; i < 16; i++) {
+      const x = x0 + i, y = y0 + j, lx = x - R0.x, ly = y - R0.y; if (lx < 0 || ly < 0 || lx >= R0.w || ly >= R0.h) continue;
+      const n = j * 16 + i; let t = mp.m[ly * R0.w + lx];
+      if ((lx === 0 || ly === 0 || lx === R0.w - 1 || ly === R0.h - 1) && !SOLID.has(t) && !WORLD.exitSet.has(wTKey(x, y))) t = T_BORD;   // the region's rim is closed except at its exits
+      c.t[n] = t === T_GATE ? T_P : t; c.o[n] = 0; c.s[n] = 0; c.reg[n] = R0.i;
+    }
+  }
+  // gates and the player's own changes
+  for (const g of WORLD.gates) if (g.closed && g.cx0 <= cx && g.cx1 >= cx && g.cy0 <= cy && g.cy1 >= cy) for (const [x, y] of g.tiles) if ((x >> 4) === cx && (y >> 4) === cy) c.t[((y & 15) << 4) | (x & 15)] = T_GATE;
+  if (WORLD.mods.size) for (let j = 0; j < 16; j++) for (let i = 0; i < 16; i++) { const v = WORLD.mods.get(wTKey(x0 + i, y0 + j)); if (v != null) { const n = j * 16 + i; c.t[n] = v; c.o[n] = 0; } }
+  WC.set(k, c);
+  if (WC.size > 5000) wEvict();
+  return c;
+}
+function wEvict() { const old = []; for (const [k, c] of WC) if (WFRAME - c.used > 600) old.push(k); old.sort(() => 0); for (let i = 0; i < old.length && WC.size > 3500; i++) WC.delete(old[i]); WLK = NaN; }
+function wTile(x, y) {
+  const cx = x >> 4, cy = y >> 4, k = (cx + 32768) * 65536 + (cy + 32768);
+  const c = k === WLK ? WLC : (WLK = k, WLC = wChunk(cx, cy));
+  return c.t[((y & 15) << 4) | (x & 15)];
+}
+function wSetTile(x, y, t, mod) {
+  const c = wChunk(x >> 4, y >> 4), n = ((y & 15) << 4) | (x & 15);
+  if (c.t[n] === t) return;
+  c.t[n] = t; c.o[n] = 0; c.ver++;
+  if (mod) WORLD.mods.set(wTKey(x, y), t);
+  wPaintDirty(x, y);
+}
+// what the chunk painter needs to know about a tile
+function wObjAt(x, y) { const c = wChunk(x >> 4, y >> 4); return c.o[((y & 15) << 4) | (x & 15)]; }
+
+// ---------- world setup (new game or load) ----------
+function wInit(seed) {
+  WORLD.seed = seed >>> 0 || 1; WG.setSeed(WORLD.seed);
+  WC.clear(); WB.clear(); WLK = NaN; WORLD.roads.clear(); WORLD.stamps.clear(); WORLD.cells.clear(); WORLD.props.length = 0; WORLD.chests.length = 0; WORLD.crews.length = 0; WORLD.roofs.length = 0; WORLD.gates.length = 0;
+  WORLD.mods.clear(); WORLD.ready = false;
+  // the regions' own data (generated and mirrored, never painted here)
+  for (const k of WREGK) WORLD.regTiles[k] = wRegionMap(k);
+  // where Bill and Mike set up this time
+  const rs = mulberry32(WORLD.seed ^ 0x5bd1e995);
+  WORLD.sites = {
+    bill: Object.assign(wPickSite(Math.floor(rs() * 1e9), -1.35, -0.3, 175, 250, 34), { b: WG.B.BADLANDS, r: 34 }),
+    mike: Object.assign(wPickSite(Math.floor(rs() * 1e9), 0.45, 1.25, 200, 270, 34), { b: WG.B.JUNK, r: 36 }),
+  };
+  const sites = WREGK.map(k => { const R0 = WREG[k]; return { rect: 1, x: R0.x, y: R0.y, w: R0.w, h: R0.h, r: R0.r, b: WG.B[R0.b] }; });
+  sites.push({ x: WORLD.sites.bill.x, y: WORLD.sites.bill.y, r: 34, b: WG.B.BADLANDS }, { x: WORLD.sites.mike.x, y: WORLD.sites.mike.y, r: 36, b: WG.B.JUNK });
+  WG.setSpec({ regions: [], seas: W_SEAS, sites });
+  WB.clear();
+  // exits: each region's exit tiles in world coordinates, and the gates on both ends of every road
+  WORLD.exitSet = new Set(); const ends = {};
+  for (const k of WREGK) {
+    const mp = WORLD.regTiles[k];
+    for (const z of mp.def.exitZones || []) {
+      const tiles = z.tiles.map(([x, y]) => wD2W(k, x, y)); for (const [x, y] of tiles) WORLD.exitSet.add(wTKey(x, y));
+      const side = z.ex.side, d = { e: [1, 0], w: [-1, 0], n: [0, -1], s: [0, 1] }[side];
+      const xs = tiles.map(t => t[0]), ys = tiles.map(t => t[1]);
+      const mid = [Math.round((Math.min(...xs) + Math.max(...xs)) / 2), Math.round((Math.min(...ys) + Math.max(...ys)) / 2)];
+      // the tile just outside the rim, then a short straight run out
+      const R0 = WREG[k], out0 = side === 'e' ? [R0.x + R0.w, mid[1]] : side === 'w' ? [R0.x - 1, mid[1]] : side === 'n' ? [mid[0], R0.y - 1] : [mid[0], R0.y + R0.h];
+      ends[k + '>' + z.ex.to] = { k, to: z.ex.to, out0, d, tiles, gate: z.ex.gate, msg: z.ex.msg };
+    }
+  }
+  const avoid = (x, y) => { for (const k of WREGK) if (wRectDist(WREG[k], x, y) < 1.5) return true; return false; };
+  const done = new Set();
+  for (const id in ends) {
+    const A0 = ends[id], B0 = ends[A0.to + '>' + A0.k]; if (!B0 || done.has(A0.to + '>' + A0.k)) continue; done.add(id);
+    const run = (E0, n) => { const pts = []; for (let i = 0; i < n; i++) pts.push([E0.out0[0] + E0.d[0] * i, E0.out0[1] + E0.d[1] * i]); return pts; };
+    const ra = run(A0, 4), rb = run(B0, 4), path = wRoad(ra[ra.length - 1], rb[rb.length - 1], avoid) || [];
+    const all = [...ra, ...path, ...rb.reverse()];
+    for (const [x, y] of all) for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) { if (wRegAt(x + ox, y + oy)) continue; wMarkRoad(x + ox, y + oy, 1); }
+    // one gate condition guards both ends of a road
+    const cond = A0.gate || B0.gate, msg = A0.gate ? A0.msg : B0.msg;
+    if (cond) for (const E0 of [A0, B0]) {
+      const xs = E0.tiles.map(t => t[0] >> 4), ys = E0.tiles.map(t => t[1] >> 4);
+      WORLD.gates.push({ tiles: E0.tiles, cond, msg, closed: false, cx0: Math.min(...xs), cx1: Math.max(...xs), cy0: Math.min(...ys), cy1: Math.max(...ys) });
+    }
+  }
+  wBuildSites();
+  WORLD.ready = true;
+  // the world map object the game plays on
+  const map = WORLD.map = {
+    key: 'world', world: true, w: 1e9, h: 1e9, m: null, gates: WORLD.gates, chestSpots: [], lights: [], anim: [], decor: [], decoEmi: [], decoLights: [], critters: [],
+    reach: { length: 0 }, pR: {}, maskVer: 0,
+    get def() { return WDEF.cur || WDEF.wild; },
+  };
+  map.canvas = null; map.emi = null; map.emiN = null;
+  MAPS.world = map;
+  return map;
+}
+
+// ================= v2.0 ENDLESS WORLD: playing in it =================
+// Entering any story region now means walking into the one big world. This file wires the world into the game:
+// where you are (region / wild biome), what is loaded around you (props, chests, crews, wild animals, bandits),
+// saving, the compass, the world map, caves, and drawing the painted ground.
+
+// ---------- the wilds as an "area" ----------
+const W_BIOME_THEME = { meadow: 'town', forest: 'marsh', desert: 'dustbowl', badlands: 'dustbowl', marsh: 'marsh', junk: 'junkyard', snow: 'ruins', dead: 'graveyard', beach: 'docks', ocean: 'docks', crystal: 'workshop' };
+const W_BIOME_MUSIC = { meadow: 'town', forest: 'marsh', desert: 'dustbowl', badlands: 'dustbowl', marsh: 'marsh', junk: 'dustbowl', snow: 'ruins', dead: 'graveyard', beach: 'docks', ocean: 'docks', crystal: 'workshop' };
+const W_BIOME_FOES = {
+  meadow: { wolf: 3, thug: 2, bandit: 2 }, forest: { wolf: 3, bandit: 2, bear: .6 }, desert: { bandit: 3, thug: 2, wolf: 1, bomber: .8 },
+  badlands: { bandit: 3, bomber: 2, thug: 1 }, marsh: { croc: 2, bandit: 2, wolf: 1, zombie: .6 }, junk: { tinhound: 3, scrapjaw: 1, bomber: 1 },
+  snow: { wolf: 2, skier: 2, bear: 1, jugg: .5 }, dead: { zombie: 4, wolf: 1, bomber: 1 }, beach: { croc: 1, thug: 2, bandit: 2 }, ocean: {}, crystal: { jugg: 2, zombie: 2, tinhound: 2, bomber: 1 },
+};
+const W_BIOME_DENS = { meadow: 5, forest: 6, desert: 5, badlands: 7, marsh: 6, junk: 7, snow: 6, dead: 8, beach: 4, ocean: 0, crystal: 8 };
+function wBiomeKey() { return WG.BIOMES[G.wbiome | 0].key; }
+function wTierRaw(tx, ty) {
+  const d = Math.hypot(tx - WG.HOME[0], ty - WG.HOME[1]), b = WG.BIOMES[wBaseBiome(Math.floor(tx), Math.floor(ty))];
+  return Math.max(.8, Math.min(.85 + d / 95 + b.tier * .3, progTier() - G.ng * 3 + 1.25));
+}
+const WDEF = { cur: null, reg: {} };
+WDEF.wild = AREAS.wild = {
+  w: 1, h: 1, exits: [], enemies: {}, groups: 0, chests: 0, triggers: [], exitZones: [], roofsB: [], camps: null, stone: null, seed: 1,
+  get name() { return G ? WG.BIOMES[G.wbiome | 0].name : 'The Wilds'; },
+  get theme() { return W_BIOME_THEME[G ? wBiomeKey() : 'meadow']; },
+  get music() { return W_BIOME_MUSIC[G ? wBiomeKey() : 'meadow']; },
+  get tier() { return G && G.p ? wTierRaw(G.p.x / TS, G.p.y / TS) : 1; },
+  get hub() { return G && G.p ? [Math.floor(G.p.x / TS), Math.floor(G.p.y / TS)] : [22, 16]; },
+};
+function wRegDef(key) {
+  if (WDEF.reg[key]) return WDEF.reg[key];
+  const base = AREAS[key], R0 = WREG[key], mp = WORLD.regTiles[key], d = Object.create(base);
+  const tr = o => Object.assign({}, o, { x: R0.x + o.x, y: R0.y + o.y });
+  d.stone = base.stone ? wA2W(key, base.stone[0], base.stone[1]) : null;
+  d.hub = wA2W(key, base.hub[0], base.hub[1]); d.start = base.start ? wA2W(key, base.start[0], base.start[1]) : d.hub;
+  d.triggers = (mp.def.triggers || []).map(tr);
+  d.camps = mp.def.camps ? mp.def.camps.map(tr) : null;
+  d.exitZones = []; d.roofsB = [];
+  return WDEF.reg[key] = d;
+}
+lookFor = (function (f0) {
+  return function (key) {
+    if (key === 'wild' && G) return LOOKS['wild_' + wBiomeKey()] || LOOKS.town;
+    if (key && key.startsWith && key.startsWith('cave_')) return LOOKS.cave;
+    return f0(key);
+  };
+})(lookFor);
+Object.assign(LOOKS, {
+  wild_meadow: { cyc: 1, day: [.98, .97, .9], night: [.3, .36, .62], cloud: .32, shaft: .12, shaftCol: [1, .92, .7], weather: 'petals', sat: 1.1, con: 1.05 },
+  wild_forest: { cyc: 1, day: [.86, .94, .84], night: [.24, .32, .52], cloud: .4, shaft: .26, shaftCol: [.95, 1, .7], weather: 'fireflies', sat: 1.05, con: 1.08, tint: [.98, 1.02, .98] },
+  wild_desert: { cyc: 1, day: [1, .94, .82], night: [.36, .3, .5], heat: 1, cloud: .15, shaft: .08, shaftCol: [1, .8, .5], weather: 'dust', sat: 1.06, con: 1.06, tint: [1.04, 1, .94] },
+  wild_badlands: { cyc: 1, day: [1, .88, .78], night: [.34, .26, .44], heat: .7, cloud: .2, shaft: .1, shaftCol: [1, .7, .45], weather: 'dust', sat: 1.08, con: 1.1, tint: [1.06, .97, .92] },
+  wild_marsh: { cyc: 1, day: [.8, .9, .82], night: [.22, .3, .4], fog: [.55, .78, .62, .32], weather: 'fireflies', sat: .96, con: 1.06, tint: [.97, 1.02, .98] },
+  wild_junk: { cyc: 1, day: [.92, .86, .78], night: [.3, .28, .36], cloud: .3, shaft: .1, shaftCol: [1, .8, .6], weather: 'embers', sat: .88, con: 1.1, tint: [1.02, .98, .94] },
+  wild_snow: { cyc: 1, day: [.96, .96, 1.02], night: [.34, .36, .6], cloud: .25, shaft: .18, shaftCol: [.9, .95, 1], weather: 'sparkle', sat: 1.04, con: 1.04, tint: [.98, 1, 1.04] },
+  wild_dead: { cyc: 1, day: [.7, .72, .82], night: [.2, .22, .4], fog: [.52, .58, .78, .4], weather: 'ash', sat: .84, con: 1.12, tint: [.96, .98, 1.06] },
+  wild_beach: { cyc: 1, day: [1, .98, .92], night: [.3, .36, .62], cloud: .25, shaft: .1, shaftCol: [1, .95, .8], weather: null, sat: 1.1, con: 1.04 },
+  wild_ocean: { cyc: 1, day: [.96, .98, 1], night: [.28, .34, .6], cloud: .3, weather: 'rain', sat: 1, con: 1.06 },
+  wild_crystal: { cyc: 1, day: [.82, .78, .96], night: [.3, .2, .5], fog: [.6, .45, .9, .25], shaft: .22, shaftCol: [.8, .6, 1], weather: 'sparkle', sat: 1.12, con: 1.1, tint: [1, .96, 1.06] },
+  cave: { amb: [.52, .48, .6], fog: [.45, .4, .6, .22], weather: null, sat: 1, con: 1.1, tint: [1, .98, 1.04] },
+});
+if (typeof THEMES !== 'undefined' && !THEMES.cave) THEMES.cave = Object.assign({}, THEMES.graveyard);
+if (typeof PAL !== 'undefined' && !PAL.cave) PAL.cave = PAL.graveyard;
+if (typeof OB_TILES !== 'undefined') OB_TILES.cave = {};
+if (typeof CRIT_KINDS !== 'undefined') CRIT_KINDS.cave = ['bat', 'mouse'];
+
+// ---------- the world map answers the questions the game asks a map ----------
+tileAt = (function (f0) { return function (map, px, py) { return map.world ? wTile(Math.floor(px / TS), Math.floor(py / TS)) : f0(map, px, py); }; })(tileAt);
+refreshGates = (function (f0) {
+  return function (map) {
+    if (!map || !map.world) return f0(map);
+    for (const g of WORLD.gates) {
+      const closed = !g.cond(); if (closed === g.closed) continue;
+      g.closed = closed;
+      for (const [x, y] of g.tiles) { const c = wChunk(x >> 4, y >> 4), n = ((y & 15) << 4) | (x & 15); c.t[n] = closed ? T_GATE : wRegionTileAt(x, y); }
+      WMASK.ver++;
+    }
+  };
+})(refreshGates);
+function wRegionTileAt(x, y) { const R0 = wRegAt(x, y); if (!R0) return T_P; const t = WORLD.regTiles[R0.key].m[(y - R0.y) * R0.w + (x - R0.x)]; return t === T_GATE ? T_P : t; }
+redrawTile = (function (f0) { return function (map, x, y) { if (map && map.world) return; return f0(map, x, y); }; })(redrawTile);
+lootOK = (function (f0) {
+  return function (map, x, y) {
+    if (!map.world) return f0(map, x, y);
+    for (const [dx, dy] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]) if (solidAt(map, x + dx, y + dy)) return false;
+    return true;
+  };
+})(lootOK);
+inTown = function () { return !!(G && G.area === 'town' && !ARENA && G.map && (G.map.key === 'town' || G.map.world)); };
+function TOWNMAP() { return G.map && G.map.world ? wRegionMap('town') : G.map; }
+
+// ---------- entering the world ----------
+enterArea = (function (f0) {
+  return function (key, px, py) {
+    if (key === 'world') return enterWorld(px, py);
+    if (WREG[key] && WORLD.ready) {
+      let x, y;
+      if (px == null) { const s = AREAS[key].start || AREAS[key].hub; [x, y] = wA2Wpx(key, s[0] * TS + 8, s[1] * TS + 8); }
+      else [x, y] = wA2Wpx(key, px, py);
+      return enterWorld(x, y);
+    }
+    G.wmapOut = G.map && G.map.world ? [G.p.x, G.p.y] : G.wmapOut;
+    return f0(key, px, py);
+  };
+})(enterArea);
+function enterWorld(px, py) {
+  const map = WORLD.map; if (!map) return;
+  G.map = map; ARENA = null; COL = null; BOSS = null; BINTRO = null; EXIT_WARN = null;
+  for (const k in E) if (Array.isArray(E[k])) E[k].length = 0;
+  WS.reset();
+  const P = G.p;
+  if (px == null) { px = 22 * TS + 8; py = 27 * TS + 8; }
+  P.x = px; P.y = py; P.rollT = 0; P.invT = 1;
+  if (solidAt(map, P.x, P.y)) { const s = nearestFree(map, P.x, P.y); P.x = s[0]; P.y = s[1]; }
+  cam.x = P.x - W / 2; cam.y = P.y - H / 2; camSnap();
+  for (const g of WORLD.gates) g.closed = null; // force a full refresh
+  refreshGates(map);
+  G.area = null; WDEF.cur = null; G.wbiome = wBaseBiome(Math.floor(P.x / TS), Math.floor(P.y / TS));
+  wTrack(true);
+  wStream(true);
+  autosave();
+}
+// ---------- new game, save and load ----------
+let W_LOAD = null;
+newGame = (function (f0) {
+  return function (diff) {
+    f0(diff);
+    const L = W_LOAD;
+    G.seed = (L && L.seed) || ((Math.random() * 2147483646) | 0) + 1;
+    G.wexp = new Set(L && Array.isArray(L.wexp) ? L.wexp : []);
+    G.wclear = (L && L.wclear) || {}; G.wfound = (L && L.wfound) || {}; G.wbiome = 0;
+    WORLD.mods.clear();
+    try { wInit(G.seed); } catch (e) { console.error('world init failed', e); }
+    if (L && Array.isArray(L.wmods)) { for (const [k, v] of L.wmods) WORLD.mods.set(k, v); WC.clear(); WLK = NaN; }
+    WDEF.reg = {}; WDEF.cur = null; WS.rprops = {}; WS.rchests = {}; WS.rroofs = {}; WPAINT.clear(); WS.regSpawn = {};
+  };
+})(newGame);
+deserialize = (function (f0) {
+  return function (s) {
+    try { W_LOAD = JSON.parse(s); } catch (e) { W_LOAD = null; }
+    try { return f0(s); } finally { W_LOAD = null; }
+  };
+})(deserialize);
+serialize = (function (f0) {
+  return function () {
+    const o = JSON.parse(f0());
+    o.v = 6; o.seed = G.seed;
+    if (G.map && G.map.world && !ARENA) { o.area = 'world'; o.x = Math.round(G.p.x); o.y = Math.round(G.p.y); }
+    else if (G.area && String(G.area).startsWith('cave_')) { const d = AREAS[G.area]; o.area = 'world'; o.x = d.exitW[0] * TS + 8; o.y = (d.exitW[1] + 1) * TS + 8; }
+    o.wexp = G.wexp ? [...G.wexp] : []; o.wclear = G.wclear || {}; o.wfound = G.wfound || {}; o.wmods = [...WORLD.mods];
+    return JSON.stringify(o);
+  };
+})(serialize);
+
+// ---------- where am I ----------
+const WS = {
+  t: 0, rprops: {}, rchests: {}, rroofs: {}, regSpawn: {}, spawnT: 0, bannerT: {}, mus: null, musT: 0, despT: 0,
+  reset() { this.t = 0; this.spawnT = 1.5; this.despT = 0; },
+};
+function wAreaAt(px, py) {
+  const tx = Math.floor(px / TS), ty = Math.floor(py / TS), T0 = WREG.town;
+  if (tx >= T0.x - 10 && ty >= T0.y - 8 && tx < T0.x + T0.w + 10 && ty < T0.y + T0.h + 4) return 'town';
+  const R0 = wRegAt(tx, ty); return R0 ? R0.key : 'wild';
+}
+function wTrack(first) {
+  const P = G.p, key = wAreaAt(P.x, P.y);
+  const c = wChunk(Math.floor(P.x / TS) >> 4, Math.floor(P.y / TS) >> 4), bi = c.b[((Math.floor(P.y / TS) & 15) << 4) | (Math.floor(P.x / TS) & 15)];
+  if (key !== G.area) {
+    G.area = key; WDEF.cur = key === 'wild' ? null : wRegDef(key);
+    if (key !== 'wild') G.visited[key] = 1;
+    G.wbiome = bi;
+    areaEnter2(key);
+    const def = G.map.def;
+    wMusic(def.music, true);
+    if (key !== 'wild' || first || !WS.bannerT[bi] || G.time - WS.bannerT[bi] > 40) { toastArea(def.name); WS.bannerT[bi] = G.time; }
+    if (WREG[key] && !def.safe) wSpawnRegion(key);
+    if (!first) autosave();
+  } else if (key === 'wild' && bi !== G.wbiome && bi !== WG.B.OCEAN) {
+    G.wbiome = bi;
+    if (!WS.bannerT[bi] || G.time - WS.bannerT[bi] > 40) { toastArea(WG.BIOMES[bi].name); WS.bannerT[bi] = G.time; }
+    wMusic(G.map.def.music, false);
+  }
+}
+function wMusic(track, now) { if (now) { WS.mus = track; WS.musT = 0; AU.play(track); } else { WS.mus = track; WS.musT = 4; } }
+
+// ---------- streaming what's around you ----------
+function wRegionProps(key) {
+  if (WS.rprops[key]) return WS.rprops[key];
+  const R0 = WREG[key], out = [];
+  for (const p of PROPS[key] || []) out.push(Object.assign({}, p, { x: R0.x + p.x, y: R0.y + p.y, _r: key }));
+  const st = AREAS[key].stone; if (st) { const [x, y] = wA2W(key, st[0], st[1]); out.push({ k: 'stone', x, y, _r: key }); }
+  return WS.rprops[key] = out;
+}
+function wRegionChests(key) {
+  if (WS.rchests[key]) return WS.rchests[key];
+  const R0 = WREG[key], mp = WORLD.regTiles[key];
+  return WS.rchests[key] = (mp.chestSpots || []).map((c, i) => ({ x: R0.x + c[0], y: R0.y + c[1], i, id: key + ':' + i, min: c[2] | 0, tier: AREAS[key].tier }));
+}
+function wChestState(c) {
+  const t = G.chestT[c.id]; c.open = t != null && G.time - t < 240;
+  if (t != null && !c.open) { delete G.chestT[c.id]; delete G.chestK[c.id]; }
+  G.chestK = G.chestK || {};
+  if (G.chestK[c.id] == null) G.chestK[c.id] = Math.max(rollChestKind((c.tier != null ? c.tier : wTierRaw(c.x, c.y)) + G.ng), c.min | 0);
+  c.kind = G.chestK[c.id];
+}
+function wStream(full) {
+  const P = G.p, tx = Math.floor(P.x / TS), ty = Math.floor(P.y / TS), R = 64;
+  // explored (for the map), by 32-tile window
+  const ek = wKey(tx >> 5, ty >> 5); if (G.wexp && !G.wexp.has(ek)) { G.wexp.add(ek); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) G.wexp.add(wKey((tx >> 5) + dx, (ty >> 5) + dy)); }
+  // props
+  const props = [];
+  for (const k of WREGK) if (wRectDist(WREG[k], tx, ty) < R) for (const p of wRegionProps(k)) props.push(p);
+  for (const p of WORLD.props) if (Math.abs(p.x - tx) < R && Math.abs(p.y - ty) < R) props.push(p);
+  const keep = E.props.filter(p => !p._r && !p._w);
+  E.props.length = 0; for (const p of keep) E.props.push(p); for (const p of props) E.props.push(p);
+  // chests
+  const had = new Set(E.chests), chests = [];
+  for (const k of WREGK) if (wRectDist(WREG[k], tx, ty) < R) for (const c of wRegionChests(k)) chests.push(c);
+  for (const c of WORLD.chests) if (Math.abs(c.x - tx) < R && Math.abs(c.y - ty) < R) chests.push(c);
+  for (const c of chests) if (!had.has(c) || full) wChestState(c);
+  E.chests.length = 0; for (const c of chests) E.chests.push(c);
+  // lights from the regions' paintings and the painted windows nearby
+  const L = [];
+  for (const k of WREGK) {
+    const R0 = WREG[k]; if (wRectDist(R0, tx, ty) > 40) continue;
+    const PR = PCACHE[k]; if (!PR) continue;
+    for (const [x, y, r, kind] of PR.lights) { const LL = P_LIGHT[kind]; if (LL) L.push(Object.assign({ x: R0.x * TS + x, y: R0.y * TS + y }, LL, { r: Math.max(LL.r * .6, r * 6) })); }
+  }
+  for (const [, wnd] of WPAINT) if (wnd.lights && Math.abs(wnd.wx * 32 + 16 - tx) < 60 && Math.abs(wnd.wy * 32 + 16 - ty) < 50) for (const [x, y, r, kind] of wnd.lights) { const LL = P_LIGHT[kind]; if (LL) L.push(Object.assign({ x, y }, LL, { r: Math.max(LL.r * .6, r * 6) })); }
+  WORLD.map.lights = L;
+}
+// enemies: a region's own crews when you walk in; bandits at hideouts; the wildlife of each biome
+function wShiftEnemy(e, dx, dy) { e.x += dx; e.y += dy; for (const [a, b] of [['sx', 'sy'], ['wx', 'wy']]) if (typeof e[a] === 'number') { e[a] += dx; e[b] += dy; } if (e.lake) e.lake = [e.lake[0] + dx, e.lake[1] + dy]; }
+function wSpawnRegion(key) {
+  const last = WS.regSpawn[key];
+  if (last != null && G.time - last < 150 && E.en.some(e => e.reg === key && !e.dead)) return;
+  for (const e of E.en) if (e.reg === key) e.gone = 1;
+  E.en = E.en.filter(e => !e.gone);
+  WS.regSpawn[key] = G.time;
+  const R0 = WREG[key], mp = WORLD.regTiles[key], P = G.p, n0 = E.en.length, sx = P.x, sy = P.y, ox = R0.x * TS, oy = R0.y * TS;
+  P.x -= ox; P.y -= oy;
+  try { spawnAreaEnemies(mp); } catch (e) { console.error(e); } finally { P.x = sx; P.y = sy; }
+  for (let i = n0; i < E.en.length; i++) { const e = E.en[i]; wShiftEnemy(e, ox, oy); e.reg = key; }
+}
+function wSpawnCrew(H) {
+  const S = H.S, list = S.def.spawns || [];
+  for (const s of list) {
+    const n = randi(s.n[0], s.n[1]);
+    for (let i = 0; i < n; i++) {
+      const type = wpick(Object.keys(s.types), k => s.types[k]);
+      let x = (S.x0 + s.x) * TS + 8, y = (S.y0 + s.y) * TS + 8;
+      for (let tries = 0; tries < 12; tries++) { const nx = (S.x0 + s.x + rand(-1.8, 1.8)) * TS + 8, ny = (S.y0 + s.y + rand(-1.8, 1.8)) * TS + 8; if (!solidAt(G.map, nx - 6, ny - 6) && !solidAt(G.map, nx + 6, ny + 6) && !solidAt(G.map, nx + 6, ny - 6) && !solidAt(G.map, nx - 6, ny + 6)) { x = nx; y = ny; break; } }
+      const e = spawnEnemy(type, x, y, { tier: wTierRaw(S.x0 + s.x, S.y0 + s.y) + G.ng * 3 + .2, elite: i === 0 && R() < .35 });
+      e.crew = H.id;
+    }
+  }
+  H.active = 1;
+}
+function wFoeSpot(r0, r1) {
+  const P = G.p;
+  for (let k = 0; k < 14; k++) {
+    const a = R() * 6.283, rr = rand(r0, r1) * TS, x = P.x + Math.cos(a) * rr, y = P.y + Math.sin(a) * rr;
+    if (Math.abs(x - P.x) < W * .6 && Math.abs(y - P.y) < H * .6) continue;
+    const tx = Math.floor(x / TS), ty = Math.floor(y / TS);
+    if (wRegAt(tx, ty) || Math.hypot(tx - WG.HOME[0], ty - WG.HOME[1]) < 34) continue;
+    let ok = true; for (const [dx, dy] of [[-6, -6], [6, 6], [6, -6], [-6, 6]]) if (solidAt(G.map, x + dx, y + dy)) { ok = false; break; }
+    if (ok) return [x, y, tx, ty];
+  }
+  return null;
+}
+function wUpdate(dt) {
+  WFRAME++;
+  const P = G.p;
+  wTrack(false);
+  if (WS.musT > 0) { WS.musT -= dt; if (WS.musT <= 0 && WS.mus && G.area === 'wild') AU.play(WS.mus); }
+  WS.t -= dt; if (WS.t <= 0) { WS.t = .35; wStream(false); }
+  // hideout crews come out when you get close, go home when you leave
+  for (const H of WORLD.crews) {
+    const d = Math.hypot(H.x * TS - P.x, H.y * TS - P.y) / TS;
+    if (!H.active && d < 36 && !(G.wclear[H.id] && G.time - G.wclear[H.id] < 900)) { wSpawnCrew(H); if (!G.wfound[H.id] && H.name) { G.wfound[H.id] = 1; toast('Found: ' + H.name, '#ffcf5c'); } }
+    else if (H.active && d > 70) { for (const e of E.en) if (e.crew === H.id) e.gone = 1; H.active = 0; }
+    else if (H.active && !E.en.some(e => e.crew === H.id && !e.dead) && !(G.wclear[H.id] && G.time - G.wclear[H.id] < 900)) {
+      G.wclear[H.id] = G.time; H.active = 1;
+      if (H.name) { toast(H.name + ' cleared!', '#7cff7c'); giveXP(30 * Math.pow(1 + wTierRaw(H.x, H.y), 1.4)); AU.sfx('ok'); }
+    }
+  }
+  // caves you walk up to get painted in the background, so going in is instant
+  if ((WFRAME & 31) === 0) for (const [, C] of WORLD.cells) if (C && C.kind === 'cave' && !PCACHE[C.key] && Math.hypot(C.x * TS - P.x, C.y * TS - P.y) < 22 * TS && PW.queue[0] !== C.key && PW.busy !== C.key) { PW.queue = [C.key, ...PW.queue.filter(q => q !== C.key)]; PW.next(); }
+  // the wild: keep a few animals and bandits roaming, never in sight when they appear
+  WS.spawnT -= dt;
+  if (WS.spawnT <= 0) {
+    WS.spawnT = 1.1;
+    if (G.area === 'wild') {
+      const bk = wBiomeKey(), tab = W_BIOME_FOES[bk] || {}, types = Object.keys(tab), night = (WINFO_N || 0) > .5;
+      const want = Math.round((W_BIOME_DENS[bk] || 5) * (night ? 1.4 : 1)), have = E.en.filter(e => e.wild && !e.dead).length;
+      if (types.length && have < want) {
+        const s = wFoeSpot(17, 26);
+        if (s) {
+          const type = wpick(types, k => tab[k]); let n = type === 'zombie' ? randi(3, 5) : type === 'bear' || type === 'jugg' || type === 'scrapjaw' ? 1 : randi(1, 3);
+          for (let i = 0; i < n; i++) {
+            const x = s[0] + rand(-20, 20), y = s[1] + rand(-20, 20); if (solidAt(G.map, x, y)) continue;
+            if (type === 'croc' && tileAt(G.map, x, y) !== T_SHAL && R() < .5) continue;
+            const e = spawnEnemy(type, x, y, { tier: wTierRaw(s[2], s[3]) + G.ng * 3 }); e.wild = 1;
+          }
+        }
+      }
+    }
+  }
+  // far away things fade out of the world
+  WS.despT -= dt;
+  if (WS.despT <= 0) {
+    WS.despT = 1.5;
+    let n = 0;
+    for (const e of E.en) { if (e.boss || e.gone) continue; const d = Math.hypot(e.x - P.x, e.y - P.y) / TS; if ((e.wild && d > 40) || (e.reg && d > 80) || (e.crew && d > 80)) { e.gone = 1; n++; } }
+    for (const e of E.en) if (e.gone) e.dead = true;
+    if (E.en.some(e => e.gone)) E.en = E.en.filter(e => !e.gone);
+    if (E.pick.length) E.pick = E.pick.filter(k => Math.hypot(k.x - P.x, k.y - P.y) < 90 * TS);
+  }
+}
+let WINFO_N = 0;
+updWorld = (function (f0) { return function (dt) { f0(dt); if (G.map && G.map.world && !ARENA) wUpdate(dt); }; })(updWorld);
+// ---------- hideout raid paths, windowed for an endless map ----------
+flowField = (function (f0) {
+  return function () {
+    const map = G.map; if (!map.world) return f0();
+    const P = G.p, px = Math.floor(P.x / TS), py = Math.floor(P.y / TS);
+    if (FLOW && FLOW.key === 'world' && FLOW.px === px && FLOW.py === py && G.time - FLOW.t < 1) return FLOW;
+    const w = 128, x0 = px - 64, y0 = py - 64, dd = new Int16Array(w * w).fill(-1), q = new Int32Array(w * w); let qh = 0, qt = 0;
+    dd[64 * w + 64] = 0; q[qt++] = 64 * w + 64;
+    while (qh < qt) {
+      const i = q[qh++], x = i % w, y = (i / w) | 0, nd = dd[i] + 1; if (nd > 60) continue;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + ox, ny = y + oy; if (nx < 0 || ny < 0 || nx >= w || ny >= w) continue; const j = ny * w + nx; if (dd[j] >= 0) continue; if (SOLID.has(wTile(x0 + nx, y0 + ny))) continue; dd[j] = nd; q[qt++] = j; }
+    }
+    return FLOW = { key: 'world', px, py, d: dd, t: G.time, x0, y0, w };
+  };
+})(flowField);
+flowMove = (function (f0) {
+  return function (e, dt, sm) {
+    if (!G.map.world) return f0(e, dt, sm);
+    const F_ = flowField(); if (!F_) return false;
+    const w = F_.w, tx = Math.floor(e.x / TS) - F_.x0, ty = Math.floor(e.y / TS) - F_.y0;
+    if (tx < 1 || ty < 1 || tx >= w - 1 || ty >= w - 1) return false;
+    const cur = F_.d[ty * w + tx]; let best = null, bd = cur >= 0 ? cur : 9999;
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const v = F_.d[(ty + oy) * w + tx + ox]; if (v >= 0 && v < bd) { bd = v; best = [tx + ox + F_.x0, ty + oy + F_.y0]; } }
+    if (!best) return false;
+    mv(e, Math.atan2(best[1] * TS + 8 - e.y, best[0] * TS + 8 - e.x), e.spd * 1.05 * sm, dt);
+    return true;
+  };
+})(flowMove);
+
+// ---------- caves ----------
+const CAVE_NAMES = { meadow: 'Badger Hollow', forest: 'Root Cave', desert: 'Sand Cave', badlands: 'Red Grotto', marsh: 'Drowned Cave', junk: 'Oil Pit', snow: 'Ice Cave', dead: 'Bone Hollow', beach: 'Sea Cave', ocean: 'Sea Cave', crystal: 'Crystal Grotto' };
+const CAVE_FOES = { meadow: { wolf: 3, bandit: 1 }, forest: { wolf: 2, bear: 1 }, desert: { bandit: 2, bomber: 1, thug: 1 }, badlands: { bandit: 2, bomber: 2 }, marsh: { croc: 2, zombie: 1 }, junk: { tinhound: 2, scrapjaw: 1 }, snow: { bear: 1, wolf: 2, jugg: 1 }, dead: { zombie: 3, bomber: 1 }, beach: { croc: 2, thug: 1 }, ocean: { croc: 2 }, crystal: { jugg: 2, zombie: 1, tinhound: 1 } };
+function wCaveDef(key, ex, ey, bi, seed) {
+  if (AREAS[key]) return AREAS[key];
+  const w = 46, h = 34, foes = CAVE_FOES[bi.key] || CAVE_FOES.meadow;
+  return AREAS[key] = {
+    name: CAVE_NAMES[bi.key] || 'Cave', theme: 'cave', w, h, music: 'ruins', seed: seed % 99991 + 7, hub: [w >> 1, h - 4], start: [w >> 1, h - 4], exits: [], decoD: .02, dark: .3, indoor: 1,
+    enemies: {}, groups: 0, chests: 0, exitW: [ex, ey - 1], biome: bi.key,
+    get tier() { return wTierRaw(ex, ey) + .35; },
+    build(A) {
+      const r = A.rng, open = new Uint8Array(w * h);
+      A.rect(0, 0, w, h, T_BORD);
+      // tunnels: a few drunken walks out from the mouth, then the rock is smoothed so it reads like a cave
+      const walk = (x, y, n, bias) => { for (let i = 0; i < n; i++) { for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) { const xx = x + ox, yy = y + oy; if (xx > 1 && yy > 1 && xx < w - 2 && yy < h - 2 && (ox * oy === 0 || r() < .5)) open[yy * w + xx] = 1; } const a = r(); if (a < .25) x += 1; else if (a < .5) x -= 1; else if (a < .5 + bias) y -= 1; else y += 1; x = Math.max(2, Math.min(w - 3, x)); y = Math.max(2, Math.min(h - 3, y)); } return [x, y]; };
+      const ends = [];
+      for (let k = 0; k < 4; k++) ends.push(walk(w >> 1, h - 4, 160 + Math.floor(r() * 120), .3));
+      for (let it = 0; it < 2; it++) { const o2 = Uint8Array.from(open); for (let y = 2; y < h - 2; y++) for (let x = 2; x < w - 2; x++) { let n = 0; for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) n += open[(y + oy) * w + x + ox]; o2[y * w + x] = n >= 5 ? 1 : n <= 2 ? 0 : open[y * w + x]; } open.set(o2); }
+      for (let y = h - 6; y < h - 1; y++) for (let x = (w >> 1) - 1; x <= (w >> 1) + 1; x++) open[y * w + x] = 1;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (open[y * w + x]) A.t(x, y, T_G);
+      A.raw(w >> 1, h - 1, T_G); A.raw(w >> 1, h - 2, T_G);
+      // pools, boulders, crystal clusters
+      for (let k = 0; k < 4; k++) { const x = 4 + Math.floor(r() * (w - 8)), y = 4 + Math.floor(r() * (h - 12)); if (open[y * w + x]) A.ell(x, y, 1.5 + r() * 2, 1 + r(), T_SHAL); }
+      A.scatter(18, T_WALL, 3, 3, w - 6, h - 9, [T_G]); A.scatter(10, T_ALT, 3, 3, w - 6, h - 9, [T_G]);
+      // a way out, loot at the far ends, something living in the dark
+      A.prop({ k: 'portal', to: 'world', x: w >> 1, y: h - 2, label: 'the surface', style: 'cave', noPath: 1, exitTo: [ex, ey - 1], _w: 1 });
+      ends.sort((a, b) => a[1] - b[1]);
+      ends.slice(0, 2 + (r() < .4 ? 1 : 0)).forEach(([x, y], i) => { if (A.get(x, y) !== T_G) return; A.chest(x, y, i === 0 ? 1 + (r() < .3 ? 1 : 0) : 0); A.spawn(x, y + 1, foes, [2, 3], {}); });
+      for (const [x, y] of ends.slice(2)) if (A.get(x, y) === T_G) A.spawn(x, y, foes, [1, 3], {});
+    },
+  };
+}
+
+// ---------- the compass: a soft arrow toward the next story place out in the world ----------
+function wTarget() {
+  const s = G.story, S = WORLD.sites, gate = (k) => { // the outside end of a region's road
+    const mp = WORLD.regTiles[k], z = (mp.def.exitZones || [])[0]; if (!z) return null; const t = z.tiles[Math.floor(z.tiles.length / 2)]; const [x, y] = wD2W(k, t[0], t[1]); return [x, y];
+  };
+  if (s === 3 && S.bill && S.bill.door && G.area !== 'dustbowl') return S.bill.door;
+  if (s === 5 && S.mike && S.mike.door) return S.mike.door;
+  const reg = s === 7 ? 'marsh' : s === 10 ? 'ruins' : s === 12 ? 'graveyard' : s === 14 ? 'docks' : (s === 2 || s === 3) ? 'dustbowl' : null;
+  if (reg && G.area === 'wild') return gate(reg);
+  if ((s === 4 || s === 6 || s === 9 || s === 11 || s === 13 || s === 15) && G.area === 'wild') return [22, 20];
+  return null;
+}
+arrowPoint = (function (f0) {
+  return function () {
+    if (!G.map || !G.map.world || ARENA) return null;
+    const t = wTarget(); if (!t) return null;
+    return [t[0] * TS + 8, t[1] * TS + 8];
+  };
+})(arrowPoint);
+
+// ---------- the world map ----------
+const W_BIOME_COL = ['#7ab048', '#2f6a3c', '#e8bc66', '#b8643a', '#3e6a4a', '#6a5a4a', '#e6ecf8', '#4a4a5a', '#ead49a', '#2a5a9a', '#7a5ac8'];
+const W_REG_COL = { town: '#d8b878', dustbowl: '#e0a050', marsh: '#3a6a4a', junkyard: '#7a6a5a', ruins: '#f0f4ff', graveyard: '#5a5a70', docks: '#8a6a42' };
+openMap = (function (f0) {
+  return function () {
+    if (!WORLD.ready || !G.wexp) return f0();
+    let sc = 4, cx = null, cy = null, cache = null;
+    const pos = () => { if (G.map && G.map.world) return [G.p.x / TS, G.p.y / TS]; if (G.wmapOut) return [G.wmapOut[0] / TS, G.wmapOut[1] / TS]; return [22, 16]; };
+    const build = () => {
+      const [px, py] = pos(); if (cx == null) { cx = px; cy = py; }
+      const c = mkCanvas(W, H), g = c.getContext('2d');
+      g.fillStyle = '#0b1424'; g.fillRect(0, 0, W, H);
+      const x0 = cx - W / 2 * sc, y0 = cy - H / 2 * sc;
+      // explored windows, coloured by biome every 4 tiles
+      const img = g.getImageData(0, 0, W, H), d = img.data;
+      for (let sy = 0; sy < H; sy++) for (let sx = 0; sx < W; sx++) {
+        const tx = Math.floor(x0 + sx * sc), ty = Math.floor(y0 + sy * sc);
+        if (!G.wexp.has(wKey(tx >> 5, ty >> 5))) continue;
+        const R0 = wRegAt(tx, ty); let col;
+        if (R0) col = W_REG_COL[R0.key]; else { const b = WG.biomeAt(tx + .5, ty + .5); col = W_BIOME_COL[b]; }
+        const n = parseInt(col.slice(1), 16), j = (sy * W + sx) * 4, sh = .9 + ((tx * 7 + ty * 13) % 5) * .03;
+        d[j] = (n >> 16 & 255) * sh; d[j + 1] = (n >> 8 & 255) * sh; d[j + 2] = (n & 255) * sh; d[j + 3] = 255;
+      }
+      g.putImageData(img, 0, 0);
+      // roads
+      g.fillStyle = '#c8a070';
+      for (const [k, m] of WORLD.roads) { const ccx = Math.floor(k / 65536) - 32768, ccy = k % 65536 - 32768; if (!G.wexp.has(wKey(ccx >> 1, ccy >> 1))) continue; for (const [i] of m) { const tx = ccx * 16 + (i & 15), ty = ccy * 16 + (i >> 4); g.fillRect(Math.floor((tx - x0) / sc), Math.floor((ty - y0) / sc), 1, 1); } }
+      cache = { c, x0, y0 };
+    };
+    build();
+    SCREEN = {
+      upd() {
+        if (hit('Escape', 'Backspace', 'KeyM', 'Enter', 'KeyF')) { SCREEN = null; return; }
+        const step = 40 * sc / 4;
+        if (hit('ArrowLeft', 'KeyA')) { cx -= step; build(); } if (hit('ArrowRight', 'KeyD')) { cx += step; build(); }
+        if (hit('ArrowUp', 'KeyW')) { cy -= step; build(); } if (hit('ArrowDown', 'KeyS')) { cy += step; build(); }
+        if (hit('KeyZ', 'Equal')) { sc = sc > 2 ? sc / 2 : sc * 4; build(); }
+      },
+      tap(px, py) { if (px > W - 60 && py < 24) { SCREEN = null; return; } if (px < 60 && py > H - 30) { sc = sc > 2 ? sc / 2 : sc * 4; build(); return; } cx += (px - W / 2) * sc; cy += (py - H / 2) * sc; build(); },
+      draw() {
+        ctx.drawImage(cache.c, 0, 0);
+        const X = tx => (tx - cache.x0) / sc, Y = ty => (ty - cache.y0) / sc;
+        for (const k of WREGK) { if (!G.visited[k]) continue; const R0 = WREG[k]; const x = X(R0.x + R0.w / 2), y = Y(R0.y + R0.h / 2); txt(AREAS[k].name, x, y - 4, '#fff4dc', 6, 'center', F1, '#070b18'); if (G.stones[k]) { ctx.fillStyle = '#4fc3f7'; ctx.fillRect(x - 2, y + 6, 4, 4); } }
+        for (const H0 of WORLD.crews) if (G.wfound[H0.id]) { const x = X(H0.x), y = Y(H0.y), cl = G.wclear[H0.id] && G.time - G.wclear[H0.id] < 900; ctx.fillStyle = cl ? '#7d8db0' : '#ff5d5d'; ctx.fillRect(x - 2, y - 2, 4, 4); }
+        for (const [, C] of WORLD.cells) if (C && C.kind === 'cave' && G.wexp.has(wKey(C.x >> 5, C.y >> 5))) { ctx.fillStyle = '#c8a8ff'; ctx.fillRect(X(C.x) - 1.5, Y(C.y) - 1.5, 3, 3); }
+        const t = wTarget(); if (t) { const x = X(t[0]), y = Y(t[1]); ctx.strokeStyle = '#ffcf5c'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(clamp(x, 8, W - 8), clamp(y, 8, H - 8), 4 + Math.sin(_gt * 5), 0, 7); ctx.stroke(); }
+        const [px, py] = pos(), x = X(px), y = Y(py);
+        if (Math.floor(_gt * 3) % 2 || true) { ctx.fillStyle = '#ff1744'; ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); ctx.strokeStyle = '#fff'; ctx.stroke(); }
+        ctx.fillStyle = 'rgba(7,11,24,.75)'; ctx.fillRect(0, 0, W, 16); ctx.fillRect(0, H - 14, W, 14);
+        txt('WORLD MAP', 8, 4, '#ffcf5c', 8, 'left', F1, null);
+        txt(Math.round(px - 22) + ', ' + Math.round(16 - py) + '   ' + (G.area === 'wild' ? WG.BIOMES[G.wbiome | 0].name : (AREAS[G.area] || {}).name || ''), W - 8, 4, '#fff4dc', 7, 'right', F1, null);
+        t2(TCH.on ? 'Tap to look around.  ZOOM bottom-left.  X to close.' : 'Arrows: look around   Z: zoom   ESC: close.   Red = you, gold = the story, red squares = hideouts, violet = caves', 8, H - 13, '#9fb0d0');
+        if (TCH.on) { txt('ZOOM', 8, H - 26, '#35e0c8', 7, 'left', F1, '#070b18'); txt('X', W - 14, 4, '#ff8a80', 8, 'left', F1, null); }
+      }
+    };
+  };
+})(openMap);
+openTravel = (function (f0) {
+  return function () { return f0(); };
+})(openTravel);
+
+// ================= v2.0 ENDLESS WORLD: drawing it =================
+// The ground is drawn from two kinds of painting: each story region's own painting (exactly as before, from the
+// painting cache), and the wilds, painted in 32x32-tile windows by a background worker. Until a window is ready a
+// soft blur of its colours stands in, so you never see a hole.
+const WIN = 32, WMARGIN = 4;
+const WPAINT = new Map();     // window key -> { wx, wy, c (canvas), ph (placeholder), lights, busy, dirty, used }
+const WW = { workers: [], q: [], seq: 0, jobs: new Map() };
+function wwStart() {
+  if (WW.started) return; WW.started = true;
+  try {
+    const src = PAINTER_FACTORY.toString() + '\nconst PAINTED = PAINTER_FACTORY();\n' +
+      'onmessage = e => { const { id, I } = e.data; try { const R = PAINTED.paintWorldWin(I); postMessage({ id, w: R.w, h: R.h, d: R.d.buffer, lights: R.lights }, [R.d.buffer]); } catch (err) { postMessage({ id, err: String(err && err.stack || err) }); } };';
+    const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+    const n = Math.max(1, Math.min(3, ((navigator.hardwareConcurrency || 2) >> 1)));
+    for (let i = 0; i < n; i++) { const wk = new Worker(url); wk.busy = null; wk.onmessage = e => wwDone(wk, e.data); wk.onerror = () => { wk.dead = true; }; WW.workers.push(wk); }
+  } catch (e) { WW.workers = []; }
+}
+// the plain-data description of a window (plus margin) the painter needs
+function wWinInput(wx, wy) {
+  const M = WMARGIN, w = WIN + M * 2, ox = wx * WIN - M, oy = wy * WIN - M, N = w * w;
+  const t = new Uint8Array(N), b = new Uint8Array(N), o = new Uint8Array(N), s = new Uint8Array(N), reg = new Uint8Array(N), st = {};
+  for (let y = 0; y < w; y++) for (let x = 0; x < w; x++) {
+    const X = ox + x, Y = oy + y, c = wChunk(X >> 4, Y >> 4), n = ((Y & 15) << 4) | (X & 15), i = y * w + x;
+    let tt = c.t[n]; if (tt === T_GATE) tt = T_P;
+    t[i] = tt; b[i] = c.b[n]; o[i] = c.o[n]; s[i] = c.s[n]; reg[i] = c.reg[n];
+    if (c.st && c.st[n]) st[i] = c.st[n];
+  }
+  const hf = new Float32Array((w + 1) * (w + 1));
+  for (let y = 0; y <= w; y++) for (let x = 0; x <= w; x++) hf[y * (w + 1) + x] = WG.fbm((ox + x) / 72, (oy + y) / 72, 707) * 9 + WG.fbm((ox + x) / 19, (oy + y) / 19, 717, 2) * 1.4;
+  const props = [];
+  for (const p of WORLD.props) if (p.x >= ox && p.y >= oy && p.x < ox + w && p.y < oy + w && (p.k === 'fire' || p.k === 'sign' || p.k === 'lamp' || (p.k === 'portal' && p.style === 'cave'))) props.push({ k: p.k, style: p.style, x: p.x - ox, y: p.y - oy });
+  return { w, h: w, ox, oy, t, b, o, s, reg, st, hf, props, margin: M, biomes: WG.BIOMES.map(B0 => B0.key), objNames: WG.OBJ.map(q => q ? q.name : null) };
+}
+function wwPump() {
+  wwStart();
+  for (const wk of WW.workers) {
+    if (wk.busy || wk.dead) continue;
+    // nearest first
+    const P = G.p, pwx = P.x / TS / WIN - .5, pwy = P.y / TS / WIN - .5;
+    WW.q.sort((a, b) => Math.hypot(a.wx - pwx, a.wy - pwy) - Math.hypot(b.wx - pwx, b.wy - pwy));
+    const job = WW.q.shift(); if (!job) return;
+    const id = ++WW.seq; WW.jobs.set(id, job); wk.busy = id;
+    try { const I = wWinInput(job.wx, job.wy); wk.postMessage({ id, I }, [I.t.buffer, I.b.buffer, I.o.buffer, I.s.buffer, I.reg.buffer, I.hf.buffer]); }
+    catch (e) { console.error(e); wk.busy = null; job.busy = false; }
+  }
+  // no workers at all (very old browser): paint one window right here, now and then
+  if (!WW.workers.length || WW.workers.every(wk => wk.dead)) {
+    const job = WW.q.shift(); if (!job) return;
+    try { const R0 = PAINTED.paintWorldWin(wWinInput(job.wx, job.wy)); wwApply(job, R0.w, R0.h, R0.d.buffer, R0.lights); } catch (e) { console.error(e); }
+  }
+}
+function wwDone(wk, r) {
+  wk.busy = null; const job = WW.jobs.get(r.id); WW.jobs.delete(r.id);
+  if (job) { if (r.err) { console.error('window paint failed', r.err); job.busy = false; job.failed = (job.failed || 0) + 1; } else wwApply(job, r.w, r.h, r.d, r.lights); }
+  setTimeout(wwPump, 0);
+}
+function wwApply(job, w, h, d, lights) {
+  const c = mkCanvas(w, h, true); c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(d), w, h), 0, 0);
+  job.c = c; job.lights = lights; job.busy = false; job.fade = 0;
+  if (job.dirty) { job.dirty = false; wWinRequest(job.wx, job.wy, true); }
+  WS.t = 0;   // pick up its lights
+}
+function wWinRequest(wx, wy, again) {
+  const k = wKey(wx, wy); let job = WPAINT.get(k);
+  if (!job) { job = { wx, wy, c: null, ph: null, busy: false, used: WFRAME }; WPAINT.set(k, job); }
+  job.used = WFRAME;
+  if (job.busy) { if (again) job.dirty = true; return job; }
+  if ((!job.c || again) && (job.failed || 0) < 3 && !WW.q.includes(job)) { job.busy = true; WW.q.push(job); }
+  return job;
+}
+function wPaintDirty(x, y) {
+  for (let dy = -WMARGIN; dy <= WMARGIN; dy += WMARGIN) for (let dx = -WMARGIN; dx <= WMARGIN; dx += WMARGIN) {
+    const wx = Math.floor((x + dx) / WIN), wy = Math.floor((y + dy) / WIN), job = WPAINT.get(wKey(wx, wy));
+    if (job && job.c) wWinRequest(wx, wy, true);
+  }
+  WMASK.ver++;
+}
+// the stand-in: one pixel per tile, blurred up
+const W_PH_COL = { 0: null, 1: '#a8805a', 3: null, 4: '#5a9ab8', 6: '#5a5a6a', 12: '#8b5a2b', 14: null, 15: '#c8e0f8', 17: '#3a2418' };
+const W_PH_G = ['#5a9a42', '#2e5a34', '#e0b060', '#b0603a', '#3a5a3a', '#4a4036', '#dfe6f6', '#3a4240', '#e6d09a', '#1f4596', '#3e3462'];
+const W_PH_W = ['#2a5cb0', '#2a5cb0', '#2a5cb0', '#2a5cb0', '#1e3a2a', '#1a1a2a', '#9ac0e8', '#203a54', '#1f4596', '#1f4596', '#203a54'];
+function wPlaceholder(job) {
+  const c = mkCanvas(WIN, WIN, true), g = c.getContext('2d'), img = g.createImageData(WIN, WIN), d = img.data;
+  for (let y = 0; y < WIN; y++) for (let x = 0; x < WIN; x++) {
+    const X = job.wx * WIN + x, Y = job.wy * WIN + y, ch = wChunk(X >> 4, Y >> 4), n = ((Y & 15) << 4) | (X & 15);
+    if (ch.reg[n]) continue;
+    const t = ch.t[n], b = ch.b[n], o = ch.o[n];
+    let col = W_PH_COL[t]; if (t === 3) col = W_PH_W[b]; if (!col) col = W_PH_G[b];
+    if (o && WG.OBJ[o].solid === 2) col = '#2a3a2a';
+    const v = parseInt(col.slice(1), 16), j = (y * WIN + x) * 4, sh = .92 + WG.ih(X, Y, 3) * .1;
+    d[j] = (v >> 16 & 255) * sh; d[j + 1] = (v >> 8 & 255) * sh; d[j + 2] = (v & 255) * sh; d[j + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  return c;
+}
+// regions: their painting, or a stand-in made from their tiles while it's being painted
+const WREG_PH = {};
+function wRegPlaceholder(key) {
+  if (WREG_PH[key]) return WREG_PH[key];
+  const mp = WORLD.regTiles[key], c = mkCanvas(mp.w, mp.h, true), g = c.getContext('2d'), img = g.createImageData(mp.w, mp.h), d = img.data, bi = WG.B[WREG[key].b] | 0;
+  for (let i = 0; i < mp.w * mp.h; i++) { const t = mp.m[i]; let col = t === 3 ? W_PH_W[bi] : t === 6 || t === 2 ? '#3a4a3a' : t === 8 || t === 12 ? '#8a6040' : t === 1 ? '#a8805a' : t === 9 || t === 10 ? '#8a5a4a' : W_PH_G[bi]; const v = parseInt(col.slice(1), 16); d[i * 4] = v >> 16 & 255; d[i * 4 + 1] = v >> 8 & 255; d[i * 4 + 2] = v & 255; d[i * 4 + 3] = 255; }
+  g.putImageData(img, 0, 0);
+  return WREG_PH[key] = c;
+}
+function wRegEmi(key, PR) {
+  const R0 = WREG[key]; if (R0.emiPR === PR) return R0;
+  const base = PR.base, emi = mkCanvas(base.width, base.height), emiN = mkCanvas(base.width, base.height), e = emi.getContext('2d'), en = emiN.getContext('2d');
+  for (const [x, y, r, kind] of PR.lights) { const L = P_LIGHT[kind]; if (!L) continue; const g = L.night ? en : e; g.fillStyle = kind === 'lamp' ? '#ffcf7a' : kind === 'fire' ? '#ffb04a' : kind === 'green' ? '#6aff9a' : '#a8c8ff'; g.globalAlpha = .55; g.fillRect(Math.round(x) - 2, Math.round(y) - 2, 5, 5); g.globalAlpha = 1; }
+  R0.emi = emi; R0.emiN = emiN; R0.emiPR = PR; return R0;
+}
+// PW (the region painter) can paint a region straight from the world's copy of its data
+PW.inputFor = (function (f0) {
+  return function (key) { const mp = MAPS[key]; if (mp && mp.pA && WREG[key] && !mp.canvas) return paintInput(mp.pA, mp.m); return f0.call(this, key); };
+})(PW.inputFor);
+let WREG_WAIT = {};
+function wDrawGround(cx, cy, info) {
+  const x0 = cx, y0 = cy, x1 = cx + WP, y1 = cy + HP;
+  CTX_W.fillStyle = '#16203f'; CTX_W.fillRect(x0, y0, WP, HP);
+  // 1. the regions
+  for (const k of WREGK) {
+    const R0 = WREG[k], rx = R0.x * TS, ry = R0.y * TS, rw = R0.w * TS, rh = R0.h * TS;
+    if (rx > x1 || ry > y1 || rx + rw < x0 || ry + rh < y0) continue;
+    const PR = PCACHE[k];
+    const sx = Math.max(0, x0 - rx), sy = Math.max(0, y0 - ry), sw = Math.min(rw, x1 - rx) - sx, sh = Math.min(rh, y1 - ry) - sy;
+    if (sw <= 0 || sh <= 0) continue;
+    if (PR) {
+      CTX_W.drawImage(PR.base, sx, sy, sw, sh, rx + sx, ry + sy, sw, sh);
+      const E0 = wRegEmi(k, PR);
+      CTX_E.drawImage(E0.emi, sx, sy, sw, sh, rx + sx, ry + sy, sw, sh);
+      if (info.night > .02) { CTX_E.globalAlpha = info.night; CTX_E.drawImage(E0.emiN, sx, sy, sw, sh, rx + sx, ry + sy, sw, sh); CTX_E.globalAlpha = 1; }
+    } else {
+      CTX_W.imageSmoothingEnabled = true; CTX_W.drawImage(wRegPlaceholder(k), sx / TS, sy / TS, sw / TS, sh / TS, rx + sx, ry + sy, sw, sh); CTX_W.imageSmoothingEnabled = false;
+      // make sure the painter works on this one next; if you're standing in it for a while, paint it now
+      if (!PW.busy && PW.queue[0] !== k) { PW.queue = [k, ...PW.queue.filter(q => q !== k)]; PW.next(); }
+      if (!PW.worker) { WREG_WAIT[k] = (WREG_WAIT[k] || 0) + 1; if (WREG_WAIT[k] > 20) { try { PCACHE[k] = paintNow(WORLD.regTiles[k].pA); } catch (e) { console.error(e); } } }
+    }
+  }
+  // 2. the wilds, window by window
+  const wx0 = Math.floor(x0 / (WIN * TS)), wy0 = Math.floor(y0 / (WIN * TS)), wx1 = Math.floor(x1 / (WIN * TS)), wy1 = Math.floor(y1 / (WIN * TS));
+  for (let wy = wy0 - 1; wy <= wy1 + 1; wy++) for (let wx = wx0 - 1; wx <= wx1 + 1; wx++) {
+    const vis = wx >= wx0 && wx <= wx1 && wy >= wy0 && wy <= wy1;
+    const job = wWinRequest(wx, wy, false);
+    if (!vis) continue;
+    const X = wx * WIN * TS, Y = wy * WIN * TS;
+    if (job.c) {
+      if (job.fade < 1 && job.ph) { job.fade = Math.min(1, job.fade + FRAME_DT * 3); CTX_W.imageSmoothingEnabled = true; CTX_W.drawImage(job.ph, X, Y, WIN * TS, WIN * TS); CTX_W.imageSmoothingEnabled = false; CTX_W.globalAlpha = job.fade; }
+      CTX_W.drawImage(job.c, X, Y); CTX_W.globalAlpha = 1;
+    } else {
+      if (!job.ph) job.ph = wPlaceholder(job);
+      CTX_W.imageSmoothingEnabled = true; CTX_W.drawImage(job.ph, X, Y, WIN * TS, WIN * TS); CTX_W.imageSmoothingEnabled = false;
+    }
+  }
+  wwPump();
+  // forget windows far behind you
+  if (WPAINT.size > (TCH.on ? 24 : 34)) {
+    const P = G.p, pw = P.x / TS / WIN, ph = P.y / TS / WIN;
+    const far = [...WPAINT.values()].filter(j => !j.busy).sort((a, b) => Math.hypot(b.wx - pw, b.wy - ph) - Math.hypot(a.wx - pw, a.wy - ph));
+    for (const j of far.slice(0, WPAINT.size - (TCH.on ? 20 : 30))) { WPAINT.delete(wKey(j.wx, j.wy)); const qi = WW.q.indexOf(j); if (qi >= 0) WW.q.splice(qi, 1); }
+  }
+}
+// gates and walk-in roofs, drawn live
+function wDrawItems(cx, cy) {
+  const out = [];
+  for (const g of WORLD.gates) if (g.closed) for (const [x, y] of g.tiles) {
+    const X = x * TS, Y = y * TS; if (X < cx - 32 || Y < cy - 32 || X > cx + WP + 32 || Y > cy + HP + 32) continue;
+    out.push({ y: Y + 14, f: () => { const c = pSprCanvas('Gate'); ctx.drawImage(c, X + 8 - (c.width >> 1), Y + 16 - c.height); } });
+  }
+  return out;
+}
+const WROOFC = new Map();
+function wRoofsNear() {
+  const P = G.p, tx = P.x / TS, ty = P.y / TS, out = [];
+  for (const k of WREGK) {
+    if (wRectDist(WREG[k], tx, ty) > 40) continue;
+    if (!WS.rroofs[k]) { const R0 = WREG[k]; WS.rroofs[k] = (WORLD.regTiles[k].def.roofsB || []).map((rf, i) => ({ x: R0.x + rf.x, y: R0.y + rf.y, w: rf.w, h: rf.h, col: rf.col, kind: rf.kind, a: 1, reg: k, idx: i, src: rf })); }
+    for (const rf of WS.rroofs[k]) out.push(rf);
+  }
+  for (const rf of WORLD.roofs) if (Math.abs(rf.x - tx) < 50 && Math.abs(rf.y - ty) < 40) out.push(rf);
+  return out;
+}
+function wRoofCanvas(rf) {
+  if (rf.reg) { const PR = PCACHE[rf.reg], r = PR && PR.roofs.find(o => o.i === rf.idx); if (r) return r.canvas; return null; }
+  let c = WROOFC.get(rf); if (c) return c;
+  try { const R0 = PAINTED.paintRoofW(rf); c = roofWithShadow(pxCanvas(R0.w, R0.h, R0.d.buffer)); } catch (e) { c = roofCanvas(rf); }
+  WROOFC.set(rf, c); return c;
+}
+drawRoofs = (function (f0) {
+  return function () {
+    if (!G.map || !G.map.world) return f0();
+    const P = G.p;
+    for (const rf of wRoofsNear()) {
+      const want = roofInside(rf, P.x, P.y) ? .12 : 1;
+      rf.a = rf.a == null ? 1 : rf.a + (want - rf.a) * Math.min(1, FRAME_DT * 8);
+      const c = wRoofCanvas(rf); if (!c) continue;
+      const x = rf.x * TS, y = (rf.y - .6) * TS;
+      ctx.save(); ctx.globalAlpha = rf.a; ctx.drawImage(c, x, y); ctx.restore();
+      if (rf.a > .3) EMI(() => { ctx.save(); ctx.globalAlpha = rf.a; ctx.globalCompositeOperation = 'destination-out'; ctx.fillRect(x, y, c.width, c.height); ctx.restore(); });
+    }
+  };
+})(drawRoofs);
+// painted props out in the wilds don't need the old flat shapes on top
+drawProp = (function (f0) {
+  return function (p) {
+    if (p._w && (p.k === 'sign' || p.k === 'fire' || (p.k === 'portal' && p.style === 'cave'))) { if (p.k === 'portal' && p.cond && !p.cond()) { const x = p.x * TS + 8, y = p.y * TS + 8; ctx.fillStyle = '#999'; ctx.fillRect(x - 8, y - 2, 16, 2); ctx.fillStyle = '#ffd54f'; ctx.fillRect(x - 2, y - 6, 4, 6); } return; }
+    return f0(p);
+  };
+})(drawProp);
+// ---------- the light mask for the WebGL renderer: a 96x96-tile window that follows you ----------
+const WMASK = { ver: 0, x0: 0, y0: 0, key: '' };
+function wMaskKey() {
+  const P = G.p, tx = Math.floor(P.x / TS), ty = Math.floor(P.y / TS);
+  if (Math.abs(tx - (WMASK.x0 + 48)) > 22 || Math.abs(ty - (WMASK.y0 + 48)) > 22) { WMASK.x0 = tx - 48; WMASK.y0 = ty - 48; }
+  return 'world:' + WMASK.x0 + ',' + WMASK.y0 + ':' + WMASK.ver;
+}
+function wBuildMask() {
+  const S = 96, d = new Uint8Array(S * S * 4);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const t = wTile(WMASK.x0 + x, WMASK.y0 + y), i = (y * S + x) * 4;
+    if (BSOLID.has(t)) d[i] = 255;
+    if (t === T_WATER) d[i + 1] = 255; else if (t === T_SHAL) d[i + 1] = 120;
+  }
+  return { w: S, h: S, d, x0: WMASK.x0, y0: WMASK.y0 };
+}
+// ---------- light and colour that drift from one biome into the next ----------
+const WLOOK = { amb: null, f: {} };
+worldInfo = (function (f0) {
+  return function () {
+    const r = f0();
+    if (!G || !G.map || !G.map.world || ARENA) { WLOOK.amb = null; return r; }
+    const k = Math.min(1, FRAME_DT * 1.2), L = r.look, B = WLOOK.f;
+    if (!WLOOK.amb) { WLOOK.amb = r.amb.slice(); for (const f of ['cloud', 'shaft', 'heat', 'sat', 'con']) B[f] = L[f] || (f === 'sat' || f === 'con' ? 1 : 0); B.fog = (L.fog || [0, 0, 0, 0]).slice(); B.tint = (L.tint || [1, 1, 1]).slice(); B.shaftCol = (L.shaftCol || [1, .9, .7]).slice(); }
+    for (let i = 0; i < 3; i++) WLOOK.amb[i] += (r.amb[i] - WLOOK.amb[i]) * k;
+    for (const f of ['cloud', 'shaft', 'heat']) B[f] += ((L[f] || 0) - B[f]) * k;
+    for (const f of ['sat', 'con']) B[f] += ((L[f] || 1) - B[f]) * k;
+    const fg = L.fog || [B.fog[0], B.fog[1], B.fog[2], 0]; for (let i = 0; i < 4; i++) B.fog[i] += (fg[i] - B.fog[i]) * k;
+    const tn = L.tint || [1, 1, 1]; for (let i = 0; i < 3; i++) B.tint[i] += (tn[i] - B.tint[i]) * k;
+    const sc = L.shaftCol || [1, .9, .7]; for (let i = 0; i < 3; i++) B.shaftCol[i] += (sc[i] - B.shaftCol[i]) * k;
+    r.look = Object.assign({}, L, { cloud: B.cloud, shaft: B.shaft, heat: B.heat, sat: B.sat, con: B.con, fog: B.fog[3] > .01 ? B.fog : null, tint: B.tint, shaftCol: B.shaftCol, cyc: 1 });
+    r.amb = WLOOK.amb.slice();
+    WINFO_N = r.night;
+    return r;
+  };
+})(worldInfo);
+
+// ================= v2.0 ENDLESS WORLD: the story, retold for an open world =================
+STORY[3] = 'Find 3 sticks of dynamite in the Flats bandit camps, then blast into Baddie Bill\'s canyon out in the red rock country, far northeast (follow the compass)';
+STORY[5] = 'Stop Mad Mike at his Scrap Fortress, out in the rust wastes southeast of the Flats (follow the compass)';
+STORY[7] = 'Hunt down the Witch at the far end of Croc Marsh (south of the Flats)';
+CLUES[1] = 'A wanted poster. On the back, in pencil:\n"Boss\'s canyon is way past the Flats,\nwhere the dirt turns red. Head northeast."';
+CLUES[3] = 'A torn map: an X scratched far to the northeast,\nbeyond the Flats, deep in red rock country.\n"DON\'T TELL NOBODY. - Slim"';
 
 </script>
 <script>if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(()=>{});</script>
